@@ -207,7 +207,7 @@ func (db *DB) root() (r *Array, err error) {
 			panic("internal error")
 		}
 
-		r = &Array{db, tree, nil, "", false}
+		r = &Array{db, tree, nil, "", 0}
 		db._root = r
 		return r, nil
 	default:
@@ -216,7 +216,7 @@ func (db *DB) root() (r *Array, err error) {
 			return nil, err
 		}
 
-		r = &Array{db, tree, nil, "", false}
+		r = &Array{db, tree, nil, "", 0}
 		db._root = r
 		return r, nil
 	}
@@ -240,7 +240,16 @@ func (db *DB) array_(canCreate bool, array string, subscripts ...interface{}) (a
 
 	a.tree, err = db.acache.getTree(db, arraysPrefix, array, canCreate, aCacheSize)
 	a.name = array
+	a.namespace = 'a'
 	return
+}
+
+func (db *DB) sysArray(canCreate bool, array string) (a Array, err error) {
+	a.db = db
+	a.tree, err = db.scache.getTree(db, systemPrefix, array, canCreate, sCacheSize)
+	a.name = array
+	a.namespace = 's'
+	return a, err
 }
 
 func (db *DB) fileArray(canCreate bool, name string) (f File, err error) {
@@ -248,7 +257,7 @@ func (db *DB) fileArray(canCreate bool, name string) (f File, err error) {
 	a.db = db
 	a.tree, err = db.fcache.getTree(db, filesPrefix, name, canCreate, fCacheSize)
 	a.name = name
-	a.fnamespace = true
+	a.namespace = 'f'
 	return File(a), err
 }
 
@@ -382,7 +391,7 @@ func (db *DB) removeArray(prefix, array string) (err error) {
 		return
 	}
 
-	removes, err := db.array_(true, systemPrefix, rname)
+	removes, err := db.sysArray(true, rname)
 	if err != nil {
 		return
 	}
@@ -403,7 +412,7 @@ func (db *DB) removeArray(prefix, array string) (err error) {
 
 func (db *DB) boot() (err error) {
 	//TODO+ wiping of {"a", "/tmp"}, {"f", "/tmp"}
-	removes, err := db.array_(false, systemPrefix, rname)
+	removes, err := db.sysArray(false, rname)
 	if removes.tree == nil || err != nil {
 		return
 	}
@@ -505,7 +514,8 @@ func (db *DB) victor(removes Array, h int64) {
 }
 
 // Arrays returns a read-only meta array which registers other arrays by name
-// as its keys. The associated values are nil.
+// as its keys. The associated values are meaningless but non-nil if the value
+// exists.
 func (db *DB) Arrays() (a Array, err error) {
 	db.enter()
 	defer db.leave()
@@ -519,7 +529,8 @@ func (db *DB) Arrays() (a Array, err error) {
 }
 
 // Files returns a read-only meta array which registers all Files in the DB by
-// name as its keys. The associated values are nil.
+// name as its keys. The associated values are meaningless but non-nil if the
+// value exists.
 func (db *DB) Files() (a Array, err error) {
 	db.enter()
 	defer db.leave()

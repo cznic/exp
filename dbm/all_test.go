@@ -1168,8 +1168,8 @@ func testDB() (db *DB, err error) {
 	return CreateTemp("", "dbm-bench")
 }
 
-func TestRemove0(t *testing.T) {
-	const aname = "TestRemove0"
+func TestRemoveArray0(t *testing.T) {
+	const aname = "TestRemoveArray0"
 
 	os.Remove(dbname)
 
@@ -1231,6 +1231,104 @@ func TestRemove0(t *testing.T) {
 	)
 	if err != nil {
 		t.Error(err)
+		return
+	}
+
+	if err = db.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+}
+
+func (db *DB) dumpAll(w io.Writer, msg string) {
+	fmt.Fprintln(w, msg)
+	root, err := db.root()
+	if err != nil {
+		fmt.Fprintln(w, "\nerror: ", err)
+		return
+	}
+
+	fmt.Fprintln(w, "====\nroot\n====")
+	if err = root.tree.Dump(w); err != nil {
+		fmt.Fprintln(w, "\nerror: ", err)
+		return
+	}
+
+	s, err := root.Slice(nil, nil)
+	if err != nil {
+		fmt.Fprintln(w, "\nerror: ", err)
+		return
+	}
+
+	if err = s.Do(func(subscripts, value []interface{}) (bool, error) {
+		v, err := root.get(subscripts...)
+		if err != nil {
+			fmt.Fprintln(w, "\nerror: ", err)
+			return false, nil
+		}
+
+		h := v.(int64)
+		t, err := lldb.OpenBTree(db.alloc, collate, h)
+		if err != nil {
+			fmt.Fprintln(w, "\nerror: ", err)
+			return false, err
+		}
+
+		fmt.Fprintf(w, "----\n%#v @ %d\n----\n", subscripts[1], h)
+		if err = t.Dump(w); err != nil {
+			fmt.Fprintln(w, "\nerror: ", err)
+			return false, err
+		}
+
+		return true, nil
+	}); err != nil {
+		fmt.Fprintln(w, "\nerror: ", err)
+		return
+	}
+}
+
+func TestRemoveFile0(t *testing.T) {
+	const fname = "TestRemoveFile0"
+
+	os.Remove(dbname)
+
+	db, err := Create(dbname)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !*oKeep {
+		defer os.Remove(dbname)
+	}
+
+	f := db.File(fname)
+	n, err := f.WriteAt([]byte{42}, 314)
+	if n != 1 || err != nil {
+		t.Error(err)
+		return
+	}
+
+	files, err := db.Files()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	v, err := files.Get(fname)
+	if v == nil || err != nil {
+		t.Error(err, v)
+		return
+	}
+
+	err = db.RemoveFile(fname)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	v, err = files.Get(fname)
+	if v != nil || err != nil {
+		t.Errorf("%#v %#v", err, v)
 		return
 	}
 

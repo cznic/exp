@@ -19,9 +19,8 @@ type Slice struct {
 
 // Do calls f for every subscripts-value pair in s in ascending collation order
 // of the subsripts.  Do returns non nil error for general errors (eg. file
-// read error). Additionally it returns io.EOF when the slice is empty, i.e. f
-// was never called.  If f returns false or a non nil error then Do terminates
-// and returns the value of error from f.
+// read error).  If f returns false or a non nil error then Do terminates and
+// returns the value of error from f.
 //
 // Note: f can get called with a subscripts-value pair which actually may no
 // longer exist - if some other goroutine introduces such data race.
@@ -36,7 +35,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 		err       error
 		skip      = s.skip
 		db        = s.a.db
-		nilRet    bool
+		noVal     bool
 	)
 
 	ok, err := s.a.validate(false)
@@ -45,7 +44,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 	}
 
 	if t := s.a.tree; !t.IsMem() && t.Handle() == 1 {
-		nilRet = true
+		noVal = true
 	}
 
 	switch {
@@ -73,8 +72,8 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			}
 
 			db.leave()
-			if nilRet {
-				v = []interface{}(nil)
+			if noVal && v != nil {
+				v = []interface{}{0}
 			}
 			if more, err = f(k[skip:], v); !more || err != nil {
 				return noEof(err)
@@ -122,8 +121,8 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			}
 
 			db.leave()
-			if nilRet {
-				v = []interface{}(nil)
+			if noVal && v != nil {
+				v = []interface{}{0}
 			}
 			if more, err = f(k[skip:], v); !more || err != nil {
 				return noEof(err)
@@ -166,8 +165,8 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			}
 
 			db.leave()
-			if nilRet {
-				v = []interface{}(nil)
+			if noVal && v != nil {
+				v = []interface{}{0}
 			}
 			if more, err = f(k[skip:], v); !more || err != nil {
 				return noEof(err)
@@ -215,8 +214,8 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			}
 
 			db.leave()
-			if nilRet {
-				v = []interface{}(nil)
+			if noVal && v != nil {
+				v = []interface{}{0}
 			}
 			if more, err = f(k[skip:], v); !more || err != nil {
 				return noEof(err)

@@ -10,11 +10,11 @@ import (
 
 // Array is a reference to a subtree of an array.
 type Array struct {
-	db         *DB
-	tree       *lldb.BTree
-	prefix     []byte
-	name       string
-	fnamespace bool
+	db        *DB
+	tree      *lldb.BTree
+	prefix    []byte
+	name      string
+	namespace byte
 }
 
 // MemArray returns an Array associated with a subtree of an anonymous array,
@@ -45,15 +45,15 @@ func (a *Array) validate(canCreate bool) (ok bool, err error) {
 		return true, nil
 	}
 
-	if a.tree, ok = a.db.acache[a.name]; ok {
-		return
-	}
-
-	switch a.fnamespace {
-	case false:
+	switch a.namespace {
+	case 'a':
 		a.tree, err = a.db.acache.getTree(a.db, arraysPrefix, a.name, canCreate, aCacheSize)
-	case true:
+	case 'f':
 		a.tree, err = a.db.fcache.getTree(a.db, filesPrefix, a.name, canCreate, fCacheSize)
+	case 's':
+		a.tree, err = a.db.scache.getTree(a.db, systemPrefix, a.name, canCreate, sCacheSize)
+	default:
+		panic("internal error")
 	}
 
 	switch {
@@ -194,8 +194,12 @@ func (a *Array) Get(subscripts ...interface{}) (value interface{}, err error) {
 	}
 
 	value, err = a.get(subscripts...)
+	if value == nil {
+		return
+	}
+
 	if t := a.tree; t != nil && !t.IsMem() && t.Handle() == 1 {
-		value = interface{}(nil)
+		value = 0
 	}
 	return
 }
