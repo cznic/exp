@@ -552,6 +552,7 @@ func (db *DB) Sync() (err error) {
 	return
 }
 
+// File returns a File associated with name.
 func (db *DB) File(name string) (f File) {
 	f, err := db.fileArray(false, name)
 	if err != nil {

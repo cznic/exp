@@ -204,10 +204,10 @@ Dump of "Invoice"
 	314159, "Items", 0 → []interface{100001, 2, 300}
 	314159, "Items", 1 → []interface{100004, 5, 600}
 	----
-	                    items.Get() → len(parts)
-	                              items.Get(0) → []interface{parts[0].num, parts[0].qty, parts[O].price}
-	                              items.Get(1) → []interface{parts[1].num, parts[1].qty, parts[1].price}
-	                              ...
+        items.Get() → len(parts)
+                  items.Get(0) → []interface{parts[0].num, parts[0].qty, parts[O].price}
+                  items.Get(1) → []interface{parts[1].num, parts[1].qty, parts[1].price}
+                  ...
 
 
 Naming issues
