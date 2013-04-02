@@ -501,7 +501,6 @@ func collateType(i interface{}) (r interface{}, err error) {
 	case string:
 		return i, nil
 	}
-	panic("unreachable")
 }
 
 // Collate collates two arrays of Go predeclared scalar types (and the typeless

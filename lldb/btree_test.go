@@ -976,3 +976,236 @@ func TestBTreeCollatingBug(t *testing.T) {
 	}
 
 }
+
+func TestExtract(t *testing.T) { // Test of the exported wrapper only, .extract tested elsewhere
+	bt := NewBTree(nil)
+	bt.Set([]byte("a"), []byte("b"))
+	bt.Set([]byte("c"), []byte("d"))
+	bt.Set([]byte("e"), []byte("f"))
+
+	if v, err := bt.Get([]byte("a")); string(v) != "b" || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Get([]byte("c")); string(v) != "d" || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Get([]byte("e")); string(v) != "f" || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Extract([]byte("c")); string(v) != "d" || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Get([]byte("a")); string(v) != "b" || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Get([]byte("c")); v != nil || err != nil {
+		t.Fatal(v, err)
+	}
+
+	if v, err := bt.Get([]byte("e")); string(v) != "f" || err != nil {
+		t.Fatal(v, err)
+	}
+}
+
+func TestFirst(t *testing.T) {
+	bt := NewBTree(nil)
+
+	if k, v, err := bt.First(); k != nil || v != nil || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	bt.Set([]byte("a"), []byte("b"))
+	bt.Set([]byte("c"), []byte("d"))
+
+	if k, v, err := bt.First(); string(k) != "a" || string(v) != "b" || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	if err := bt.Delete([]byte("a")); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err := bt.First(); string(k) != "c" || string(v) != "d" || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	if err := bt.Delete([]byte("c")); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err := bt.First(); k != nil || v != nil || err != nil {
+		t.Fatal(k, v, err)
+	}
+}
+
+func TestLast(t *testing.T) {
+	bt := NewBTree(nil)
+
+	if k, v, err := bt.First(); k != nil || v != nil || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	bt.Set([]byte("a"), []byte("b"))
+	bt.Set([]byte("c"), []byte("d"))
+
+	if k, v, err := bt.Last(); string(k) != "c" || string(v) != "d" || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	if err := bt.Delete([]byte("c")); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err := bt.First(); string(k) != "a" || string(v) != "b" || err != nil {
+		t.Fatal(k, v, err)
+	}
+
+	if err := bt.Delete([]byte("a")); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err := bt.First(); k != nil || v != nil || err != nil {
+		t.Fatal(k, v, err)
+	}
+}
+
+func TestSeekFirst(t *testing.T) {
+	bt := NewBTree(nil)
+
+	enum, err := bt.SeekFirst()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	bt.Set([]byte("c"), []byte("d"))
+	enum, err = bt.SeekFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = enum.Prev()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	err = enum.Next()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	k, v, err := enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "c" || string(v) != "d" {
+		t.Fatal(k, v)
+	}
+
+	bt.Set([]byte("a"), []byte("b"))
+	enum, err = bt.SeekFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = enum.Prev()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	k, v, err = enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "a" || string(v) != "b" {
+		t.Fatal(k, v)
+	}
+
+	err = enum.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	k, v, err = enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "c" || string(v) != "d" {
+		t.Fatal(k, v)
+	}
+}
+
+func TestSeekLast(t *testing.T) {
+	bt := NewBTree(nil)
+
+	enum, err := bt.SeekFirst()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	bt.Set([]byte("a"), []byte("b"))
+	enum, err = bt.SeekFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = enum.Prev()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	err = enum.Next()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	k, v, err := enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "a" || string(v) != "b" {
+		t.Fatal(k, v)
+	}
+
+	bt.Set([]byte("c"), []byte("d"))
+	enum, err = bt.SeekLast()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = enum.Next()
+	if err != io.EOF {
+		t.Fatal(err)
+	}
+
+	k, v, err = enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "c" || string(v) != "d" {
+		t.Fatal(k, v)
+	}
+
+	err = enum.Prev()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	k, v, err = enum.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(k) != "a" || string(v) != "b" {
+		t.Fatal(k, v)
+	}
+}

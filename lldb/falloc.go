@@ -578,7 +578,6 @@ reloc:
 		relocated = true
 		goto reloc
 	}
-	panic("unreachable")
 }
 
 // Realloc sets the content of a block referred to by handle ot or returns an
@@ -1134,7 +1133,7 @@ var nolog = func(error) bool { return false }
 // Statistics are returned via 'stats' if non nil. The statistics are valid
 // only if Verify succeeded, ie. it didn't reported anything to log and it
 // returned a nil error.
-func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats) (err error) { //TODO-
+func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats) (err error) {
 	if log == nil {
 		log = nolog
 	}
@@ -1157,7 +1156,6 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		var v byte
 		if off < bitmap.Size() {
 			if n, err := bitmap.ReadAt(byteBuf, off); n != 1 {
-				//TODO- return false, fmt.Errorf("Allocator.Verify - reading bitmap: %s", err)
 				return false, &ErrILSEQ{Type: ErrOther, Off: off, More: fmt.Errorf("Allocator.Verify - reading bitmap: %s", err)}
 			}
 
@@ -1177,7 +1175,6 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		}
 		byteBuf[0] = v
 		if n, err := bitmap.WriteAt(byteBuf, off); n != 1 || err != nil {
-			//TODO- return false, fmt.Errorf("Allocator.Verify - writing bitmap: %s", err)
 			return false, &ErrILSEQ{Type: ErrOther, Off: off, More: fmt.Errorf("Allocator.Verify - writing bitmap: %s", err)}
 		}
 
@@ -1387,7 +1384,6 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		rq := int(mathutil.MinInt64(64*1024, rem))
 		var n int
 		if n, err = bitmap.ReadAt(buf[:rq], off); n != rq {
-			//TODO- return fmt.Errorf("bitmap ReadAt(size %d, off %#x): %s", rq, off, err)
 			return &ErrILSEQ{Type: ErrOther, Off: off, More: fmt.Errorf("bitmap ReadAt(size %d, off %#x): %s", rq, off, err)}
 		}
 

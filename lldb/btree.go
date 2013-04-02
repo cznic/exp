@@ -4,10 +4,9 @@
 
 package lldb
 
-//TODO -all fmt.Errorf
-
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -52,7 +51,7 @@ func NewBTree(collate func(a, b []byte) int) *BTree {
 	store := newMemBTreeStore()
 	root, err := newBTree(store)
 	if err != nil { // should not happen
-		panic(fmt.Errorf("%v", err))
+		panic(err.Error())
 	}
 
 	return &BTree{store, root, collate}
@@ -67,7 +66,7 @@ func (t *BTree) IsMem() (r bool) {
 // Clear empties the tree.
 func (t *BTree) Clear() (err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -77,7 +76,7 @@ func (t *BTree) Clear() (err error) {
 // Delete deletes key and its associated value from the tree.
 func (t *BTree) Delete(key []byte) (err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -113,7 +112,6 @@ func elem(v interface{}) string {
 	case string:
 		return fmt.Sprintf("%q", x)
 	}
-	panic("unreachable")
 }
 
 // DumpScalars outputs a human readable dump of t to w. It is usable iff t keys
@@ -182,9 +180,9 @@ func (t *BTree) Dump(w io.Writer) (err error) {
 // Extract is a combination of Get and Delete. If the key exists in the tree,
 // it is returned (like Get) and also deleted from a tree in a more efficient
 // way which doesn't walk it twice.
-func (t *BTree) Extract(key []byte) (value []byte, err error) { //TODO +test
+func (t *BTree) Extract(key []byte) (value []byte, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -193,9 +191,9 @@ func (t *BTree) Extract(key []byte) (value []byte, err error) { //TODO +test
 
 // First returns the first KV pair of the tree, if it exists. Otherwise key == nil
 // and value == nil.
-func (t *BTree) First() (key, value []byte, err error) { //TODO +test
+func (t *BTree) First() (key, value []byte, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -215,7 +213,7 @@ func (t *BTree) First() (key, value []byte, err error) { //TODO +test
 // Get returns the value associated with key, or nil if no such value exists.
 func (t *BTree) Get(key []byte) (value []byte, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -229,9 +227,9 @@ func (t *BTree) Handle() int64 {
 
 // Last returns the last KV pair of the tree, if it exists. Otherwise key == nil
 // and value == nil.
-func (t *BTree) Last() (key, value []byte, err error) { //TODO +test
+func (t *BTree) Last() (key, value []byte, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -265,7 +263,7 @@ func (t *BTree) Last() (key, value []byte, err error) { //TODO +test
 // modulo the differing return values.
 func (t *BTree) Put(key []byte, upd func(key, old []byte) (new []byte, write bool, err error)) (old []byte, written bool, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -277,7 +275,7 @@ func (t *BTree) Put(key []byte, upd func(key, old []byte) (new []byte, write boo
 // The position is possibly "after" the last KV pair, but that is not an error.
 func (t *BTree) Seek(key []byte) (enum *BTreeEnumerator, hit bool, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -292,9 +290,9 @@ func (t *BTree) Seek(key []byte) (enum *BTreeEnumerator, hit bool, err error) {
 
 // SeekFirst returns an enumerator positioned on the first KV pair in the tree,
 // if any.  For an empty tree, err == io.EOF is returend.
-func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) { //TODO +test
+func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -311,9 +309,9 @@ func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) { //TODO +test
 
 // SeekLast returns an enumerator positioned on the last KV pair in the tree,
 // if any.  For an empty tree, err == io.EOF is returend.
-func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) { //TODO +test
+func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -332,7 +330,7 @@ func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) { //TODO +test
 // overwritten by the new one.
 func (t *BTree) Set(key, value []byte) (err error) {
 	if t == nil {
-		err = fmt.Errorf("BTree method invoked on nil receiver")
+		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
@@ -354,7 +352,7 @@ type BTreeEnumerator struct {
 // in the tree then err == io.EOF is returned.
 func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 	if e == nil {
-		err = fmt.Errorf("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("BTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
@@ -374,7 +372,7 @@ func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 // current position. If there is no "next" KV pair, io.EOF is returned.
 func (e *BTreeEnumerator) Next() (err error) {
 	if e == nil {
-		err = fmt.Errorf("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("BTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
@@ -405,7 +403,7 @@ func (e *BTreeEnumerator) Next() (err error) {
 // current position. If there is no "previous" KV pair, io.EOF is returned.
 func (e *BTreeEnumerator) Prev() (err error) {
 	if e == nil {
-		err = fmt.Errorf("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("BTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
@@ -1406,7 +1404,6 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 		}
 
 		return btreeDataPage(left).concat(a, root, iroot, parent, lh, ph, parentIndex-1)
-		panic("unreachable")
 	}
 
 	return p.concat(a, root, iroot, parent, ph, rh, parentIndex)
@@ -1658,13 +1655,11 @@ func (root btree) put2(a btreeStore, c func(a, b []byte) int, key []byte, upd fu
 			return
 		}
 	}
-	panic("unreachable")
 }
 
 func (root btree) get(a btreeStore, dst []byte, c func(a, b []byte) int, key []byte) (b []byte, err error) {
-	//TODO use dst (later)
 	var r []byte
-	if r, err = a.Get(nil, int64(root)); err != nil {
+	if r, err = a.Get(dst, int64(root)); err != nil {
 		return
 	}
 
@@ -1691,7 +1686,7 @@ func (root btree) get(a btreeStore, dst []byte, c func(a, b []byte) int, key []b
 		case ok:
 			if p.isIndex() {
 				dh := btreeIndexPage(p).dataPage(index)
-				dp, err := a.Get(nil, dh)
+				dp, err := a.Get(dst, dh)
 				if err != nil {
 					return nil, err
 				}
@@ -1706,12 +1701,11 @@ func (root btree) get(a btreeStore, dst []byte, c func(a, b []byte) int, key []b
 			return
 		}
 	}
-	panic("unreachable")
 }
 
 func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key []byte) (value []byte, err error) {
 	var r []byte
-	if r, err = a.Get(nil, int64(root)); err != nil {
+	if r, err = a.Get(dst, int64(root)); err != nil {
 		return
 	}
 
@@ -1738,7 +1732,7 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 		if ok {
 			if p.isIndex() {
 				dph := btreeIndexPage(p).dataPage(index)
-				dp, err := a.Get(nil, dph)
+				dp, err := a.Get(dst, dph)
 				if err != nil {
 					return nil, err
 				}
@@ -1797,7 +1791,6 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 		parent = ph
 		ph = btreeIndexPage(p).child(index)
 	}
-	panic("unreachable")
 }
 
 func (root btree) first(a btreeStore) (ph int64, p btreeDataPage, err error) {

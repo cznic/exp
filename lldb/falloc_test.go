@@ -788,7 +788,7 @@ func TestAllocatorMakeUsedBlock(t *testing.T) {
 func stableRef(m map[int64][]byte) (r []struct {
 	h int64
 	b []byte
-},) {
+}) {
 	a := make(sortutil.Int64Slice, 0, len(m))
 	for k := range m {
 		a = append(a, k)
