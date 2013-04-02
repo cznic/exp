@@ -1507,6 +1507,66 @@ func TestArrays(t *testing.T) {
 
 }
 
+func TestFiles(t *testing.T) {
+	os.Remove(dbname)
+
+	db, err := Create(dbname)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer os.Remove(dbname)
+	}
+
+	a, err := db.Files()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	names, err := enumStrKeys(a)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := len(names), 0; g != e {
+		t.Error(g, e)
+		return
+	}
+
+	f := db.File("foo")
+	if n, err := f.WriteAt([]byte{42}, 0); n != 1 {
+		t.Error(err)
+		return
+	}
+
+	names, err = enumStrKeys(a)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := len(names), 1; g != e {
+		t.Error(g, e)
+		return
+	}
+
+	if g, e := names[0], "foo"; g != e {
+		t.Error(g, e)
+		return
+	}
+
+	if err = db.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+
+}
+
 func TestInc0(t *testing.T) {
 	os.Remove(dbname)
 
