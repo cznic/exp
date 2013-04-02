@@ -7,8 +7,10 @@
 package lldb
 
 import (
-	"github.com/cznic/fileutil"
 	"os"
+
+	"github.com/cznic/fileutil"
+	"github.com/cznic/mathutil"
 )
 
 var _ Filer = &SimpleFileFiler{} // Ensure SimpleFileFiler is a Filer.
@@ -26,12 +28,17 @@ var _ Filer = &SimpleFileFiler{} // Ensure SimpleFileFiler is a Filer.
 type SimpleFileFiler struct {
 	file *os.File
 	nest int
-	//TODO cache size
+	size int64
 }
 
 // NewSimpleFileFiler returns a new SimpleFileFiler.
 func NewSimpleFileFiler(f *os.File) *SimpleFileFiler {
-	return &SimpleFileFiler{file: f}
+	fi, err := os.Stat(f.Name())
+	if err != nil {
+		panic(err) //TODO must return error
+	}
+
+	return &SimpleFileFiler{file: f, size: fi.Size()}
 }
 
 // BeginUpdate implements Filer.
@@ -78,12 +85,7 @@ func (f *SimpleFileFiler) Rollback() (err error) { return }
 
 // Size implements Filer.
 func (f *SimpleFileFiler) Size() int64 {
-	fi, err := f.file.Stat() //TODO-
-	if err != nil {
-		panic(err)
-	}
-
-	return fi.Size() //TODO +cached size
+	return f.size
 }
 
 // Truncate implements Filer.
@@ -92,10 +94,12 @@ func (f *SimpleFileFiler) Truncate(size int64) (err error) {
 		return &ErrINVAL{"Truncate size", size}
 	}
 
+	f.size = size
 	return f.file.Truncate(size)
 }
 
 // WriteAt implements Filer.
 func (f *SimpleFileFiler) WriteAt(b []byte, off int64) (n int, err error) {
+	f.size = mathutil.MaxInt64(f.size, int64(len(b))+off)
 	return f.file.WriteAt(b, off)
 }

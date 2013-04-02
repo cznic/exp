@@ -726,7 +726,6 @@ func (a *Allocator) write(off int64, b ...[]byte) (err error) {
 func (a *Allocator) read(b []byte, off int64) (err error) {
 	var rn int
 	if rn, err = a.f.ReadAt(b, off); rn != len(b) {
-		//TODO- return fmt.Errorf("ReadAt(size %d, off %#x) == (%d, %q)", len(b), off, rn, err)
 		return &ErrILSEQ{Type: ErrOther, Off: off, More: err}
 	}
 

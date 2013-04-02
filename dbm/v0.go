@@ -13,7 +13,7 @@ import (
 func open00(name string, in *DB) (db *DB, err error) {
 	db = in
 	if db.alloc, err = lldb.NewFLTAllocator(lldb.NewInnerFiler(db.filer, 16), lldb.FLTPowersOf2); err != nil {
-		db, err = nil, &os.PathError{Op: "dbm.Open", Path: name, Err: err}
+		return nil, &os.PathError{Op: "dbm.Open", Path: name, Err: err}
 	}
 
 	db.alloc.Compress = compress

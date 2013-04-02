@@ -116,17 +116,14 @@ func Open(name string) (db *DB, err error) {
 		return
 	}
 
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, &os.PathError{Op: "dbm.Open: file.Stat()", Path: name, Err: err}
-	}
+	filer := lldb.NewSimpleFileFiler(f)
 
-	if sz := fi.Size(); sz%16 != 0 {
+	if sz := filer.Size(); sz%16 != 0 {
 		return nil, &os.PathError{Op: "dbm.Open:", Path: name, Err: fmt.Errorf("file size %d(%#x) is not 0 (mod 16)", sz, sz)}
 	}
 
 	var b [16]byte
-	if n, err := f.ReadAt(b[:], 0); n != 16 || err != nil {
+	if n, err := filer.ReadAt(b[:], 0); n != 16 || err != nil {
 		return nil, &os.PathError{Op: "dbm.Open.ReadAt", Path: name, Err: err}
 	}
 
@@ -134,8 +131,6 @@ func Open(name string) (db *DB, err error) {
 	if err = h.rd(b[:]); err != nil {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
-
-	filer := lldb.NewSimpleFileFiler(f)
 
 	db = &DB{f: f, filer: filer}
 	switch h.ver {
@@ -145,7 +140,6 @@ func Open(name string) (db *DB, err error) {
 		return open00(name, db)
 	}
 
-	panic("unreachable")
 }
 
 // Close closes the DB, rendering it unusable for I/O. It returns an error, if
@@ -196,7 +190,7 @@ func (db *DB) root() (r *Array, err error) {
 	sz := db.filer.Size()
 	switch {
 	case sz < db.emptySize:
-		panic("internal error")
+		panic(fmt.Errorf("internal error: %d", sz))
 	case sz == db.emptySize:
 		tree, h, err := lldb.CreateBTree(db.alloc, collate)
 		if err != nil {
@@ -220,7 +214,6 @@ func (db *DB) root() (r *Array, err error) {
 		db._root = r
 		return r, nil
 	}
-	panic("unreachable")
 }
 
 // Array returns an Array associated with a subtree of array, determined by
@@ -438,7 +431,6 @@ func (db *DB) boot() (err error) {
 			err = removes.Delete(subscripts)
 			return
 		}
-		panic("unreachable")
 	})
 
 	if db.stop == nil {

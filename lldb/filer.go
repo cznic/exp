@@ -9,6 +9,8 @@ package lldb
 
 import (
 	"fmt"
+
+	"github.com/cznic/mathutil"
 )
 
 func doubleTrouble(first, second error) error {
@@ -150,7 +152,7 @@ func (f *InnerFiler) ReadAt(b []byte, off int64) (n int, err error) {
 func (f *InnerFiler) Rollback() error { return f.outer.Rollback() }
 
 // Size implements Filer.
-func (f *InnerFiler) Size() int64 { return f.outer.Size() - f.off }
+func (f *InnerFiler) Size() int64 { return mathutil.MaxInt64(f.outer.Size()-f.off, 0) }
 
 // Truncate implements Filer.
 func (f *InnerFiler) Truncate(size int64) error { return f.outer.Truncate(size + f.off) }

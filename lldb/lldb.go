@@ -112,13 +112,11 @@ func h2b(b []byte, h int64) []byte {
 }
 
 // Content length N (must be in [252, 65787]) to long used block M field.
-// TODO +test
 func n2m(n int) (m int) {
 	return n % 0x10000
 }
 
 // Long used block M (must be in [0, 65535]) field to content length N.
-// TODO +test
 func m2n(m int) (n int) {
 	if m <= maxShort {
 		m += 0x10000

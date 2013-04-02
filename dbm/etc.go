@@ -146,7 +146,6 @@ func encVal(val interface{}) (r []byte, err error) {
 	default:
 		return lldb.EncodeScalars(x)
 	}
-	panic("unreachable")
 }
 
 func noEof(e error) (err error) {
