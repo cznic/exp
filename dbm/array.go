@@ -320,9 +320,6 @@ func (a *Array) Clear(subscripts ...interface{}) (err error) {
 // Slice returns a new Slice from Array, with a subscripts range of [from, to].
 // If from is nil it works as 'from lowest existing key'.  If to is nil it
 // works as 'to highest existing key'.
-//
-//BUG(jnml) The nil from, to works as declared currently only at the root of an
-//array.
 func (a *Array) Slice(from, to []interface{}) (s *Slice, err error) {
 	var bf, bt []byte
 	if bf, err = lldb.EncodeScalars(from...); err != nil {
@@ -339,9 +336,9 @@ func (a *Array) Slice(from, to []interface{}) (s *Slice, err error) {
 	}
 
 	return &Slice{
-		a:    a,
-		skip: len(prefix),
-		from: append(a.prefix, bf...),
-		to:   append(a.prefix, bt...),
+		a:      a,
+		prefix: prefix,
+		from:   bf,
+		to:     bt,
 	}, nil
 }

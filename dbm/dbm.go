@@ -18,12 +18,6 @@ import (
 	"github.com/cznic/exp/lldb"
 )
 
-// AboveUnicode is a scalar list collating after any valid UTF-8 string.
-//
-//BUG(jnml) This is a temporary hack and should probably go away when Slice is
-//properly implemented.
-var AboveUnicode = []interface{}{"\xff"}
-
 const (
 	aCacheSize = 500
 	fCacheSize = 500
@@ -285,9 +279,6 @@ func (db *DB) Get(array string, subscripts ...interface{}) (value interface{}, e
 // Slice returns a new Slice of array, with a subscripts range of [from, to].
 // If from is nil it works as 'from lowest existing key'.  If to is nil it
 // works as 'to highest existing key'.
-//
-//BUG(jnml) Semantics of an empty limit differs for non prefixed arrays vs
-//prefixed ones.
 func (db *DB) Slice(array string, subscripts, from, to []interface{}) (s *Slice, err error) {
 	db.enter()
 	defer db.leave()
@@ -463,7 +454,7 @@ func (db *DB) victor(removes Array, h int64) {
 	}()
 
 	db.bkl.Lock()
-	t, err := lldb.OpenBTree(db.alloc, nil, h)
+	t, err := lldb.OpenBTree(db.alloc, collate, h)
 	if err != nil {
 		db.bkl.Unlock()
 		finished = true

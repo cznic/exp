@@ -638,7 +638,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "", "M", "P", ""},
 		{"B", "", "A", "Z", ""},
 
-		{"B", "D|E", "", "", ""},
+		{"B", "D|E", "", "", "D|E"},
 		{"B", "D|E", "", "A", ""},
 		{"B", "D|E", "", "B", ""},
 		{"B", "D|E", "", "C", ""},
@@ -646,7 +646,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "D|E", "", "E", "D|E"},
 		{"B", "D|E", "", "F", "D|E"},
 
-		{"B", "D|E", "A", "", ""},
+		{"B", "D|E", "A", "", "D|E"},
 		{"B", "D|E", "A", "A", ""},
 		{"B", "D|E", "A", "B", ""},
 		{"B", "D|E", "A", "C", ""},
@@ -654,7 +654,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "D|E", "A", "E", "D|E"},
 		{"B", "D|E", "A", "F", "D|E"},
 
-		{"B", "D|E", "B", "", ""},
+		{"B", "D|E", "B", "", "D|E"},
 		{"B", "D|E", "B", "A", ""},
 		{"B", "D|E", "B", "B", ""},
 		{"B", "D|E", "B", "C", ""},
@@ -662,7 +662,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "D|E", "B", "E", "D|E"},
 		{"B", "D|E", "B", "F", "D|E"},
 
-		{"B", "D|E", "C", "", ""},
+		{"B", "D|E", "C", "", "D|E"},
 		{"B", "D|E", "C", "A", ""},
 		{"B", "D|E", "C", "B", ""},
 		{"B", "D|E", "C", "C", ""},
@@ -670,7 +670,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "D|E", "C", "E", "D|E"},
 		{"B", "D|E", "C", "F", "D|E"},
 
-		{"B", "D|E", "D", "", ""},
+		{"B", "D|E", "D", "", "D|E"},
 		{"B", "D|E", "D", "A", ""},
 		{"B", "D|E", "D", "B", ""},
 		{"B", "D|E", "D", "C", ""},
@@ -678,7 +678,7 @@ func TestSlice0(t *testing.T) {
 		{"B", "D|E", "D", "E", "D|E"},
 		{"B", "D|E", "D", "F", "D|E"},
 
-		{"B", "D|E", "E", "", ""},
+		{"B", "D|E", "E", "", "E"},
 		{"B", "D|E", "E", "A", ""},
 		{"B", "D|E", "E", "B", ""},
 		{"B", "D|E", "E", "C", ""},
@@ -702,11 +702,17 @@ func TestSlice0(t *testing.T) {
 		to := strings1D(test.to)
 		exp := test.exp
 
-		a, err := MemArray(prefix...)
+		a0, _ := MemArray()
+
+		a, err := a0.Array(prefix...)
 		if err != nil {
 			t.Fatal(err)
 		}
 
+		if test.prefix != "" {
+			a0.Set(-1, "@")
+			a0.Set(-1, "Z")
+		}
 		for i, v := range keys {
 			if err = a.Set(i, v...); err != nil {
 				t.Error(err)
@@ -741,7 +747,7 @@ func TestSlice0(t *testing.T) {
 		}
 
 		g := strings.Join(ga, "|")
-		t.Log(g)
+		t.Logf("%q", g)
 		if g != exp {
 			t.Fatalf("%d\n%s\n%s", i, g, exp)
 		}
@@ -787,7 +793,7 @@ func TestSlice1(t *testing.T) {
 
 	t.Logf("\n%s", d)
 
-	s, err := a.Slice(nil, AboveUnicode)
+	s, err := a.Slice(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1428,7 +1434,7 @@ func TestRemove1(t *testing.T) {
 }
 
 func enumStrKeys(a Array) (k []string, err error) {
-	s, err := a.Slice(nil, AboveUnicode)
+	s, err := a.Slice(nil, nil)
 	if err != nil {
 		return
 	}

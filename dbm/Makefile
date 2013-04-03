@@ -9,6 +9,7 @@ all:
 todo:
 	@grep -n ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alnum:]] *.go || true
 	@grep -n TODO *.go || true
+	@grep -n BUG *.go || true
 	@grep -n println *.go || true
 
 clean:

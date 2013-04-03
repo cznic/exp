@@ -13,7 +13,7 @@ import (
 // Slice represents a slice of an Array.
 type Slice struct {
 	a        *Array
-	skip     int
+	prefix   []interface{}
 	from, to []byte
 }
 
@@ -33,9 +33,12 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 		k, v      []interface{}
 		hit, more bool
 		err       error
-		skip      = s.skip
+		skip      = len(s.prefix)
 		db        = s.a.db
 		noVal     bool
+		from      = append(bpack(s.a.prefix), s.from...)
+		to        = append(bpack(s.a.prefix), s.to...)
+		bprefix   = s.a.prefix
 	)
 
 	ok, err := s.a.validate(false)
@@ -50,7 +53,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 	switch {
 	case s.from == nil && s.to == nil:
 		db.enter()
-		if enum, err = s.a.tree.SeekFirst(); err != nil {
+		if enum, _, err = s.a.tree.Seek(bprefix); err != nil {
 			db.leave()
 			return noEof(err)
 		}
@@ -59,6 +62,11 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			if bk, bv, err = enum.Current(); err != nil {
 				db.leave()
 				return noEof(err)
+			}
+
+			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
+				db.leave()
+				return nil
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
@@ -94,7 +102,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 		}
 	case s.from == nil && s.to != nil:
 		db.enter()
-		if enum, err = s.a.tree.SeekFirst(); err != nil {
+		if enum, _, err = s.a.tree.Seek(from); err != nil {
 			db.leave()
 			return noEof(err)
 		}
@@ -105,9 +113,9 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			if collate(bk, s.to) > 0 {
+			if collate(bk, to) > 0 {
 				db.leave()
-				return noEof(err)
+				return nil
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
@@ -143,7 +151,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 		}
 	case s.from != nil && s.to == nil:
 		db.enter()
-		if enum, _, err = s.a.tree.Seek(s.from); err != nil {
+		if enum, _, err = s.a.tree.Seek(from); err != nil {
 			db.leave()
 			return noEof(err)
 		}
@@ -152,6 +160,11 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 			if bk, bv, err = enum.Current(); err != nil {
 				db.leave()
 				return noEof(err)
+			}
+
+			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
+				db.leave()
+				return nil
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
@@ -187,7 +200,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 		}
 	case s.from != nil && s.to != nil:
 		db.enter()
-		if enum, _, err = s.a.tree.Seek(s.from); err != nil {
+		if enum, _, err = s.a.tree.Seek(from); err != nil {
 			db.leave()
 			return noEof(err)
 		}
@@ -198,9 +211,9 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			if collate(bk, s.to) > 0 {
+			if collate(bk, to) > 0 {
 				db.leave()
-				return noEof(err)
+				return nil
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
