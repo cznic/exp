@@ -1362,14 +1362,23 @@ func TestRemove1(t *testing.T) {
 		defer os.Remove(dbname)
 	}
 
-	sz0 := db.filer.Size()
+	sz0, err := db.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	for i := 0; i < N; i++ {
 		if err = db.Set(fmt.Sprintf("V%06d", i), aname, fmt.Sprintf("K%06d", i)); err != nil {
 			t.Error(err)
 			return
 		}
 	}
-	sz1 := db.filer.Size()
+	sz1, err := db.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	err = db.RemoveArray(aname)
 	if err != nil {
@@ -1399,7 +1408,11 @@ func TestRemove1(t *testing.T) {
 	for i := 0; i < N/2+1; i++ {
 		runtime.Gosched()
 	}
-	sz3 := db.filer.Size()
+	sz3, err := db.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	if err = db.Close(); err != nil {
 		t.Error(err)
@@ -1414,7 +1427,11 @@ func TestRemove1(t *testing.T) {
 	for i := 0; i < 2*N; i++ {
 		runtime.Gosched()
 	}
-	sz4 := db.filer.Size()
+	sz4, err := db.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	if err = db.Close(); err != nil {
 		t.Error(err)

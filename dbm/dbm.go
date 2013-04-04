@@ -112,7 +112,12 @@ func Open(name string) (db *DB, err error) {
 
 	filer := lldb.NewSimpleFileFiler(f)
 
-	if sz := filer.Size(); sz%16 != 0 {
+	sz, err := filer.Size()
+	if err != nil {
+		return
+	}
+
+	if sz%16 != 0 {
 		return nil, &os.PathError{Op: "dbm.Open:", Path: name, Err: fmt.Errorf("file size %d(%#x) is not 0 (mod 16)", sz, sz)}
 	}
 
@@ -181,7 +186,11 @@ func (db *DB) root() (r *Array, err error) {
 		return
 	}
 
-	sz := db.filer.Size()
+	sz, err := db.filer.Size()
+	if err != nil {
+		return
+	}
+
 	switch {
 	case sz < db.emptySize:
 		panic(fmt.Errorf("internal error: %d", sz))
@@ -321,6 +330,13 @@ func (db *DB) Clear(array string, subscripts ...interface{}) (err error) {
 // Name returns the name of the DB file.
 func (db *DB) Name() string {
 	return db.filer.Name()
+}
+
+// Size returns the size of the DB file.
+func (db *DB) Size() (int64, error) {
+	db.enter()
+	defer db.leave()
+	return db.filer.Size()
 }
 
 func (db *DB) setRemoving(h int64, flag bool) (r bool) {
