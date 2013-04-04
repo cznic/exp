@@ -32,7 +32,7 @@ type Filer interface {
 	// EndUpdate or Rollback. Calls to BeginUpdate may nest.
 	BeginUpdate()
 
-	// As os.File.Close().
+	// Analogous to os.File.Close().
 	Close() error
 
 	// EndUpdate decrements the "nesting" counter. If it's zero after that
@@ -43,7 +43,7 @@ type Filer interface {
 	// EndUpdate is an error.
 	EndUpdate() error
 
-	// As os.File.Name().
+	// Analogous to os.File.Name().
 	Name() string
 
 	// PunchHole deallocates space inside a "file" in the byte range
@@ -69,14 +69,15 @@ type Filer interface {
 	// Invocation of an unbalanced Rollback is an error.
 	Rollback() error
 
-	// As os.File.FileInfo().Size().
-	Size() int64
+	// Analogous to os.File.FileInfo().Size().
+	Size() (int64, error)
 
-	// As os.File.Truncate().
+	// Analogous to os.File.Truncate().
 	Truncate(size int64) error
 
-	// As os.File.WriteAt(). Note: `off` is an absolute "file pointer"
-	// address and cannot be negative even when a Filer is a InnerFiler.
+	// Analogous to os.File.WriteAt(). Note: `off` is an absolute "file
+	// pointer" address and cannot be negative even when a Filer is a
+	// InnerFiler.
 	WriteAt(b []byte, off int64) (n int, err error)
 }
 
@@ -152,7 +153,14 @@ func (f *InnerFiler) ReadAt(b []byte, off int64) (n int, err error) {
 func (f *InnerFiler) Rollback() error { return f.outer.Rollback() }
 
 // Size implements Filer.
-func (f *InnerFiler) Size() int64 { return mathutil.MaxInt64(f.outer.Size()-f.off, 0) }
+func (f *InnerFiler) Size() (int64, error) {
+	sz, err := f.outer.Size()
+	if err != nil {
+		return 0, err
+	}
+
+	return mathutil.MaxInt64(sz-f.off, 0), nil
+}
 
 // Truncate implements Filer.
 func (f *InnerFiler) Truncate(size int64) error { return f.outer.Truncate(size + f.off) }

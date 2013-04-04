@@ -28,17 +28,12 @@ var _ Filer = &SimpleFileFiler{} // Ensure SimpleFileFiler is a Filer.
 type SimpleFileFiler struct {
 	file *os.File
 	nest int
-	size int64
+	size int64 // not set if < 0
 }
 
 // NewSimpleFileFiler returns a new SimpleFileFiler.
 func NewSimpleFileFiler(f *os.File) *SimpleFileFiler {
-	fi, err := os.Stat(f.Name())
-	if err != nil {
-		panic(err) //TODO must return error
-	}
-
-	return &SimpleFileFiler{file: f, size: fi.Size()}
+	return &SimpleFileFiler{file: f, size: -1}
 }
 
 // BeginUpdate implements Filer.
@@ -84,8 +79,16 @@ func (f *SimpleFileFiler) ReadAt(b []byte, off int64) (n int, err error) {
 func (f *SimpleFileFiler) Rollback() (err error) { return }
 
 // Size implements Filer.
-func (f *SimpleFileFiler) Size() int64 {
-	return f.size
+func (f *SimpleFileFiler) Size() (int64, error) {
+	if f.size < 0 { // boot
+		fi, err := os.Stat(f.file.Name())
+		if err != nil {
+			return 0, err
+		}
+
+		f.size = fi.Size()
+	}
+	return f.size, nil
 }
 
 // Truncate implements Filer.
@@ -100,6 +103,14 @@ func (f *SimpleFileFiler) Truncate(size int64) (err error) {
 
 // WriteAt implements Filer.
 func (f *SimpleFileFiler) WriteAt(b []byte, off int64) (n int, err error) {
+	if f.size < 0 { // boot
+		fi, err := os.Stat(f.file.Name())
+		if err != nil {
+			return 0, err
+		}
+
+		f.size = fi.Size()
+	}
 	f.size = mathutil.MaxInt64(f.size, int64(len(b))+off)
 	return f.file.WriteAt(b, off)
 }

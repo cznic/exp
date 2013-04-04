@@ -265,7 +265,12 @@ func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 	}
 
 	if h == 0 { // must grow
-		h = off2h(a.f.Size())
+		var sz int64
+		if sz, err = a.f.Size(); err != nil {
+			return
+		}
+
+		h = off2h(sz)
 		err = a.writeUsedBlock(h, c, b)
 		return
 	}
@@ -349,7 +354,11 @@ func (a *Allocator) free(h, from int64, acceptRelocs bool) (err error) {
 
 func (a *Allocator) free2(h, atoms int64) (err error) {
 	//fmt.Printf("free2(h %#x off %#x atoms %#x)\n", h, h2off(h), atoms)
-	sz := a.f.Size()
+	sz, err := a.f.Size()
+	if err != nil {
+		return
+	}
+
 	ltag, latoms, lp, ln, err := a.leftNfo(h)
 	if err != nil {
 		return
@@ -636,7 +645,12 @@ retry:
 			return
 		}
 
-		fh, fa, sz := handle+needAtoms, atoms-needAtoms, a.f.Size()
+		fh, fa := handle+needAtoms, atoms-needAtoms
+		sz, err := a.f.Size()
+		if err != nil {
+			return err
+		}
+
 		if h2off(fh)+16*fa == sz {
 			return a.f.Truncate(h2off(fh))
 		}
@@ -647,14 +661,18 @@ retry:
 		return a.writeUsedBlock(handle, &c, b)
 	case needAtoms > atoms:
 		// in place extend or relocate
-		sz := a.f.Size()
+		var sz int64
+		if sz, err = a.f.Size(); err != nil {
+			return
+		}
+
 		off := h2off(handle)
 		switch {
 		case off+atoms*16 == sz:
 			// relocating tail block - shortcut
 			return a.writeUsedBlock(handle, &c, b)
 		default:
-			if off+atoms*16 < a.f.Size() {
+			if off+atoms*16 < sz {
 				// handle is not a tail block, check right neighbour
 				rh := handle + atoms
 				rtag, ratoms, p, n, e := a.nfo(rh)
@@ -739,8 +757,13 @@ func (a *Allocator) read(b []byte, off int64) (err error) {
 func (a *Allocator) nfo(h int64) (tag byte, s, p, n int64, err error) {
 	off := h2off(h)
 	rq := int64(22)
-	if fsize := a.f.Size(); off+rq >= fsize {
-		if rq = fsize - off; rq < 15 {
+	sz, err := a.f.Size()
+	if err != nil {
+		return
+	}
+
+	if off+rq >= sz {
+		if rq = sz - off; rq < 15 {
 			err = io.ErrUnexpectedEOF
 			return
 		}
@@ -1137,7 +1160,12 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		log = nolog
 	}
 
-	if n := bitmap.Size(); n != 0 {
+	n, err := bitmap.Size()
+	if err != nil {
+		return
+	}
+
+	if n != 0 {
 		return &ErrINVAL{"Allocator.Verify: bit map initial size non zero (%d)", n}
 	}
 
@@ -1153,7 +1181,12 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		m := bitMask[h&7]
 		off := h >> 3
 		var v byte
-		if off < bitmap.Size() {
+		sz, err := bitmap.Size()
+		if err != nil {
+			return
+		}
+
+		if off < sz {
 			if n, err := bitmap.ReadAt(byteBuf, off); n != 1 {
 				return false, &ErrILSEQ{Type: ErrOther, Off: off, More: fmt.Errorf("Allocator.Verify - reading bitmap: %s", err)}
 			}
@@ -1191,7 +1224,11 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		dlen            int
 	)
 
-	fsz := a.f.Size()
+	fsz, err := a.f.Size()
+	if err != nil {
+		return
+	}
+
 	ok := fsz%16 == 0
 	totalAtoms := fsz / atomLen
 	if !ok {
@@ -1378,7 +1415,11 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 	}
 
 	var off, lh int64
-	rem := bitmap.Size()
+	rem, err := bitmap.Size()
+	if err != nil {
+		return err
+	}
+
 	for rem != 0 {
 		rq := int(mathutil.MinInt64(64*1024, rem))
 		var n int

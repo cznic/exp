@@ -163,7 +163,12 @@ func (a *pAllocator) Realloc(handle int64, b []byte) (err error) {
 
 func dump(a *pAllocator, t *testing.T) {
 	m := a.f.(*MemFiler)
-	t.Logf("MemFiler.Size() == %d(%#x)", m.Size(), m.Size())
+	sz, err := m.Size()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("MemFiler.Size() == %d(%#x)", sz, sz)
 	if !*allocRndDump {
 		return
 	}
@@ -175,7 +180,7 @@ func dump(a *pAllocator, t *testing.T) {
 	}
 
 	defer f.Close()
-	sz, err := a.lastKnownGood.WriteTo(f)
+	sz, err = a.lastKnownGood.WriteTo(f)
 	if err != nil {
 		t.Error(err)
 		return
@@ -363,7 +368,12 @@ func TestVerify0(t *testing.T) {
 				t.Fatal(m, err)
 			}
 
-			if g, e := f.Size(), int64(n); g != e {
+			sz, err := f.Size()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g, e := sz, int64(n); g != e {
 				t.Fatal(g, e)
 			}
 
@@ -551,7 +561,12 @@ func TestVerify2(t *testing.T) {
 			t.Fatal(m, err)
 		}
 
-		if g, e := f.Size(), int64(n); g != e {
+		sz, err := f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := sz, int64(n); g != e {
 			t.Fatal(g, e)
 		}
 
@@ -974,9 +989,14 @@ func TestAllocatorRnd(t *testing.T) {
 			}
 
 			if cc == 0 {
+				sz, err := f.Size()
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				t.Logf(
 					"kind %d, AllocAtoms %7d, AllocBytes %7d, FreeAtoms %7d, Relocations %7d, TotalAtoms %7d, f.Size %7d, space eff %.2f%%",
-					kind, a.stats.AllocAtoms, a.stats.AllocBytes, a.stats.FreeAtoms, a.stats.Relocations, a.stats.TotalAtoms, f.Size(), 100*float64(a.stats.AllocBytes)/float64(f.Size()),
+					kind, a.stats.AllocAtoms, a.stats.AllocBytes, a.stats.FreeAtoms, a.stats.Relocations, a.stats.TotalAtoms, sz, 100*float64(a.stats.AllocBytes)/float64(sz),
 				)
 			}
 			// Free everything
@@ -988,7 +1008,12 @@ func TestAllocatorRnd(t *testing.T) {
 				}
 			}
 
-			if g, e := a.f.Size(), int64(0); g != e {
+			sz, err := a.f.Size()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g, e := sz, int64(0); g != e {
 				dump(a, t)
 				t.Fatal(g, e)
 			}

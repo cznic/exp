@@ -882,7 +882,11 @@ func TestBTreeRemove(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			sz0 := f.Size()
+			sz0, err := f.Size()
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			store, err := NewAllocator(f, flt)
 			if err != nil {
 				t.Fatal(err)
@@ -905,7 +909,12 @@ func TestBTreeRemove(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if g, e := f.Size()-sz0, int64(0); g != e {
+			sz, err := f.Size()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g, e := sz-sz0, int64(0); g != e {
 				t.Fatal(g, e)
 			}
 		}

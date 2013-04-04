@@ -34,7 +34,12 @@ func TestNewFLTAllocator(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if g, e := f.Size(), int64((7*len(rep0)+15)&^15); g != e {
+		sz, err := f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := sz, int64((7*len(rep0)+15)&^15); g != e {
 			t.Fatal(kind, len(rep0), g, e, rep0)
 		}
 

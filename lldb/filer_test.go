@@ -123,7 +123,13 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := f.Size(), sz; g != e {
+	fsz, err := f.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := fsz, sz; g != e {
 		t.Error(g, e)
 		return
 	}
@@ -134,7 +140,13 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := f.Size(), sz; g != e {
+	fsz, err = f.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := fsz, sz; g != e {
 		t.Error(g, e)
 		return
 	}
@@ -145,7 +157,13 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := f.Size(), sz; g != e {
+	fsz, err = f.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := fsz, sz; g != e {
 		t.Error(g, e)
 		return
 	}
@@ -216,7 +234,13 @@ func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
 		}
 	}
 
-	if g, e := f.Size(), int64(n2); g != e {
+	fsz, err := f.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := fsz, int64(n2); g != e {
 		t.Error(g, e)
 		return
 	}
@@ -233,7 +257,13 @@ func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
 		}
 		n, err := f.ReadAt(b[from:to], int64(from))
 		if err != nil && (err != io.EOF && n != 0) {
-			t.Error(f.Size(), from, to, err)
+			fsz, err = f.Size()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			t.Error(fsz, from, to, err)
 			return
 		}
 
@@ -337,12 +367,24 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := outer.Size(), int64(HDR_SIZE+3); g != e {
+	osz, err := outer.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := osz, int64(HDR_SIZE+3); g != e {
 		t.Error(g, e)
 		return
 	}
 
-	if g, e := inner.Size(), int64(3); g != e {
+	isz, err := inner.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := isz, int64(3); g != e {
 		t.Error(g, e)
 		return
 	}
@@ -403,12 +445,24 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := outer.Size(), int64(HDR_SIZE+LONG_OFF+3); g != e {
+	osz, err = outer.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := osz, int64(HDR_SIZE+LONG_OFF+3); g != e {
 		t.Error(g, e)
 		return
 	}
 
-	if g, e := inner.Size(), int64(LONG_OFF+3); g != e {
+	isz, err = inner.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := isz, int64(LONG_OFF+3); g != e {
 		t.Error(g, e)
 		return
 	}
@@ -449,12 +503,24 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 		return
 	}
 
-	if g, e := inner.Size(), int64(1); g != e {
+	isz, err = inner.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := isz, int64(1); g != e {
 		t.Error(g, e)
 		return
 	}
 
-	if g, e := outer.Size(), int64(HDR_SIZE+1); g != e {
+	osz, err = outer.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if g, e := osz, int64(HDR_SIZE+1); g != e {
 		t.Error(g, e)
 		return
 	}

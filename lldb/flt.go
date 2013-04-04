@@ -136,7 +136,12 @@ func newCannedFLT(f Filer, kind int) (ft *flt, err error) {
 	}
 
 	ft.size = (7*int64(len(ft.slots)) + 15) &^ 15
-	switch sz := f.Size(); {
+	sz, err := f.Size()
+	if err != nil {
+		return
+	}
+
+	switch {
 	case sz == 0:
 		// new DB, fill the empty on-disk FLT
 		b := make([]byte, ft.size)

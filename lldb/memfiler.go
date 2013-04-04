@@ -256,8 +256,8 @@ func (f *MemFiler) ReadFrom(r io.Reader) (n int64, err error) {
 func (f *MemFiler) Rollback() (err error) { return }
 
 // Size implements Filer.
-func (f *MemFiler) Size() int64 {
-	return f.size
+func (f *MemFiler) Size() (int64, error) {
+	return f.size, nil
 }
 
 // Truncate implements Filer.
