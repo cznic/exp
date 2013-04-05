@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io"
 
-	"code.google.com/p/snappy-go/snappy"
 	"github.com/cznic/mathutil"
+	"github.com/cznic/zappy"
 )
 
 // A AllocStats records statistics about a Filer. It can be optionally filled by
@@ -112,9 +112,7 @@ Content compression
 The tail flag of an used block is one of
 
 	CC == 0 // Content is not compressed.
-	CC == 1 // Content is in Snappy[1] compression format.
-
-	[1]: http://code.google.com/p/snappy
+	CC == 1 // Content is in zappy compression format.
 
 If compression of written content is enabled, there are two cases: If
 compressed size < original size then the compressed content should be written
@@ -515,7 +513,7 @@ reloc:
 				copy(b, first[1:])
 				return
 			case tagCompressed:
-				return snappy.Decode(dst, first[1:dlen+1])
+				return zappy.Decode(dst, first[1:dlen+1])
 			}
 		default:
 			var cc [1]byte
@@ -543,7 +541,7 @@ reloc:
 					return dst[:0], err
 				}
 
-				return snappy.Decode(dst, a.zbuf)
+				return zappy.Decode(dst, a.zbuf)
 			}
 		}
 	case 0:
@@ -574,7 +572,7 @@ reloc:
 				return dst[:0], err
 			}
 
-			return snappy.Decode(dst, a.zbuf)
+			return zappy.Decode(dst, a.zbuf)
 		}
 	case tagFreeShort, tagFreeLong:
 		return nil, &ErrILSEQ{Type: ErrExpUsedTag, Off: off, Arg: int64(tag)}
@@ -914,7 +912,7 @@ func (a *Allocator) makeUsedBlock(c *allocatorBlock, b []byte) (w []byte, rqAtom
 
 	rqAtoms = n2atoms(n)
 	if a.Compress && n > 14 { // attempt compression
-		if a.zbuf, err = snappy.Encode(a.zbuf, b); err != nil {
+		if a.zbuf, err = zappy.Encode(a.zbuf, b); err != nil {
 			return
 		}
 
@@ -1096,7 +1094,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 	}
 
 	if cc == tagCompressed {
-		if ubuf, err = snappy.Decode(ubuf, buf[:dlen]); err != nil || len(ubuf) > maxRq {
+		if ubuf, err = zappy.Decode(ubuf, buf[:dlen]); err != nil || len(ubuf) > maxRq {
 			err = &ErrILSEQ{Type: ErrDecompress, Off: h2off(h)}
 			log(err)
 			return

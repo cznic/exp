@@ -13,7 +13,7 @@ todo:
 	@grep -n println *.go || true
 
 clean:
-	rm -f *~ cov cov.html bad-dump good-dump lldb.test
+	rm -f *~ cov cov.html bad-dump good-dump lldb.test old.txt new.txt
 
 gocov:
 	gocov test $(COV) | gocov-html > cov.html
