@@ -15,8 +15,6 @@ import (
 	"testing"
 )
 
-//TODO Add tests for memfile readfrom and writeto, check hole punching works.
-
 // Bench knobs.
 const (
 	filerTestChunkSize = 32e3

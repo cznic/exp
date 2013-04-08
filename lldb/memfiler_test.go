@@ -93,3 +93,40 @@ func TestMemFilerWriteTo(t *testing.T) {
 		}
 	}
 }
+
+func TestMemFilerReadFromWriteTo(t *testing.T) {
+	const (
+		sz   = 1e3 * pgSize
+		hole = 1e2 * pgSize
+	)
+	rng := rand.New(rand.NewSource(42))
+	data := make([]byte, sz)
+	for i := range data {
+		data[i] = byte(rng.Int())
+	}
+	f := NewMemFiler()
+	buf := bytes.NewBuffer(data)
+	if n, err := f.ReadFrom(buf); n != int64(len(data)) || err != nil {
+		t.Fatal(n, err)
+	}
+
+	buf = bytes.NewBuffer(nil)
+	if n, err := f.WriteTo(buf); n != int64(len(data)) || err != nil {
+		t.Fatal(n, err)
+	}
+
+	rd := buf.Bytes()
+	if !bytes.Equal(data, rd) {
+		t.Fatal("corrupted data")
+	}
+
+	n0 := len(f.m)
+	data = make([]byte, hole)
+	f.WriteAt(data, sz/2)
+	n := len(f.m)
+	t.Log(n0, n)
+	d := n0 - n
+	if d*pgSize < hole-2 || d*pgSize > hole {
+		t.Fatal(n0, n, d)
+	}
+}
