@@ -122,3 +122,109 @@ func TestNewFLTAllocator(t *testing.T) {
 
 	}
 }
+
+type testFLTSlot struct {
+	minsize int64
+	head    int64
+}
+
+func (s *testFLTSlot) MinSize() int64        { return s.minsize }
+func (s *testFLTSlot) Head() int64           { return s.head }
+func (s *testFLTSlot) SetHead(a int64) error { s.head = a; return nil }
+
+type testFLT []FLTSlot
+
+func (t testFLT) Report() ([]FLTSlot, error) { return t, nil }
+
+func TestFLTReject(t *testing.T) {
+	if _, err := NewAllocator(NewMemFiler(), testFLT(nil)); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(NewMemFiler(), testFLT{&testFLTSlot{1, 0}}); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 0},
+			&testFLTSlot{maxFLTRq, 0},
+		},
+	); err != nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 0},
+			&testFLTSlot{0, 0},
+			&testFLTSlot{maxFLTRq, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 0},
+			&testFLTSlot{1, 0},
+			&testFLTSlot{maxFLTRq, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, -1},
+			&testFLTSlot{maxFLTRq, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 2},
+			&testFLTSlot{maxFLTRq, 2},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{2, 0},
+			&testFLTSlot{maxFLTRq, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 0},
+			&testFLTSlot{maxFLTRq - 1, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+	if _, err := NewAllocator(
+		NewMemFiler(),
+		testFLT{
+			&testFLTSlot{1, 0},
+			&testFLTSlot{maxFLTRq + 1, 0},
+		},
+	); err == nil {
+		t.Fatal(0)
+	}
+
+}

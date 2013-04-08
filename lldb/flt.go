@@ -220,7 +220,6 @@ func newFlt(f FLT) (t *flt, err error) {
 	for _, slot := range r.slots {
 		sz := slot.MinSize()
 		if sz := slot.MinSize(); sz < 1 {
-			//TODO +test
 			return nil, &ErrINVAL{"Invalid free list table slot MinSize:", sz}
 		}
 
@@ -231,12 +230,10 @@ func newFlt(f FLT) (t *flt, err error) {
 		minSizes[sz] = true
 		h := slot.Head()
 		if h < 0 {
-			//TODO +test
 			return nil, &ErrINVAL{"Invalid free list table head value:", h}
 		}
 
 		if h != 0 && heads[h] {
-			//TODO +test
 			return nil, &ErrINVAL{"Duplicate free list table head value:", h}
 		}
 
