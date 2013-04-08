@@ -15,7 +15,6 @@ import (
 	"testing"
 )
 
-//TODO Add a benchmark for memfiler random access and tune pgBits accordingly.
 //TODO Add tests for memfile readfrom and writeto, check hole punching works.
 
 // Bench knobs.
@@ -612,4 +611,62 @@ func BenchmarkMemFilerRdSeq(b *testing.B) {
 
 		ofs = (ofs + filerTestChunkSize) % filerTotalSize
 	}
+}
+
+func BenchmarkMemFilerWrRand(b *testing.B) {
+	b.StopTimer()
+	rng := rand.New(rand.NewSource(42))
+	f := newMemFiler()
+	var bytes int64
+
+	var ofs, runs []int
+	for i := 0; i < b.N; i++ {
+		ofs = append(ofs, rng.Intn(1<<31))
+		runs = append(runs, rng.Intn(1<<31)%(2*pgSize))
+	}
+	data := make([]byte, 2*pgSize)
+	for i := range data {
+		data[i] = byte(rng.Int())
+	}
+
+	runtime.GC()
+	b.StartTimer()
+	for i, v := range ofs {
+		n := runs[i]
+		bytes += int64(n)
+		f.WriteAt(data[:n], int64(v))
+	}
+	b.StopTimer()
+	b.SetBytes(bytes / int64(b.N))
+}
+
+func BenchmarkMemFilerRdRand(b *testing.B) {
+	b.StopTimer()
+	rng := rand.New(rand.NewSource(42))
+	f := newMemFiler()
+	var bytes int64
+
+	var ofs, runs []int
+	for i := 0; i < b.N; i++ {
+		ofs = append(ofs, rng.Intn(1<<31))
+		runs = append(runs, rng.Intn(1<<31)%(2*pgSize))
+	}
+	data := make([]byte, 2*pgSize)
+	for i := range data {
+		data[i] = byte(rng.Int())
+	}
+
+	for i, v := range ofs {
+		n := runs[i]
+		bytes += int64(n)
+		f.WriteAt(data[:n], int64(v))
+	}
+
+	runtime.GC()
+	b.StartTimer()
+	for _, v := range ofs {
+		f.ReadAt(data, int64(v))
+	}
+	b.StopTimer()
+	b.SetBytes(bytes / int64(b.N))
 }

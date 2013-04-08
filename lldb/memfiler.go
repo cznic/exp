@@ -7,104 +7,70 @@
 /*
 
 pgBits: 8
-BenchmarkMemFilerWrSeq	   50000	     67556 ns/op	 473.68 MB/s
-BenchmarkMemFilerRdSeq	   50000	     64059 ns/op	 499.54 MB/s
+BenchmarkMemFilerWrSeq	  100000	     19430 ns/op	1646.93 MB/s
+BenchmarkMemFilerRdSeq	  100000	     17390 ns/op	1840.13 MB/s
+BenchmarkMemFilerWrRand	 1000000	      1903 ns/op	 133.94 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1153 ns/op	 221.16 MB/s
 
 pgBits: 9
-BenchmarkMemFilerWrSeq	   50000	     38517 ns/op	 830.79 MB/s
-BenchmarkMemFilerRdSeq	   50000	     36147 ns/op	 885.27 MB/s
+BenchmarkMemFilerWrSeq	  100000	     16195 ns/op	1975.80 MB/s
+BenchmarkMemFilerRdSeq	  200000	     13011 ns/op	2459.39 MB/s
+BenchmarkMemFilerWrRand	 1000000	      2248 ns/op	 227.28 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1177 ns/op	 433.94 MB/s
 
 pgBits: 10
-BenchmarkMemFilerWrSeq	  100000	     22977 ns/op	1392.67 MB/s
-BenchmarkMemFilerRdSeq	  100000	     20193 ns/op	1584.70 MB/s
+BenchmarkMemFilerWrSeq	  100000	     16169 ns/op	1979.04 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12673 ns/op	2524.91 MB/s
+BenchmarkMemFilerWrRand	 1000000	      5550 ns/op	 184.30 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1699 ns/op	 601.79 MB/s
 
 pgBits: 11
-BenchmarkMemFilerWrSeq	  100000	     22537 ns/op	1419.88 MB/s
-BenchmarkMemFilerRdSeq	  100000	     14083 ns/op	2272.13 MB/s
+BenchmarkMemFilerWrSeq	  100000	     13449 ns/op	2379.31 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12058 ns/op	2653.80 MB/s
+BenchmarkMemFilerWrRand	  500000	      4335 ns/op	 471.47 MB/s
+BenchmarkMemFilerRdRand	 1000000	      2843 ns/op	 719.47 MB/s
 
 pgBits: 12
-BenchmarkMemFilerWrSeq	  100000	     22130 ns/op	1445.99 MB/s
-BenchmarkMemFilerRdSeq	  200000	     10777 ns/op	2969.25 MB/s
+BenchmarkMemFilerWrSeq	  200000	     11976 ns/op	2672.00 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12255 ns/op	2611.06 MB/s
+BenchmarkMemFilerWrRand	  200000	      8058 ns/op	 507.14 MB/s
+BenchmarkMemFilerRdRand	  500000	      4365 ns/op	 936.15 MB/s
 
 pgBits: 13
-BenchmarkMemFilerWrSeq	  100000	     21999 ns/op	1454.56 MB/s
-BenchmarkMemFilerRdSeq	  200000	      9561 ns/op	3346.85 MB/s
+BenchmarkMemFilerWrSeq	  200000	     10852 ns/op	2948.69 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11561 ns/op	2767.77 MB/s
+BenchmarkMemFilerWrRand	  200000	      9748 ns/op	 840.15 MB/s
+BenchmarkMemFilerRdRand	  500000	      7236 ns/op	1131.59 MB/s
 
 pgBits: 14
-BenchmarkMemFilerWrSeq	  100000	     21980 ns/op	1455.81 MB/s
-BenchmarkMemFilerRdSeq	  200000	      8999 ns/op	3555.80 MB/s
+BenchmarkMemFilerWrSeq	  200000	     10328 ns/op	3098.12 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11292 ns/op	2833.66 MB/s
+BenchmarkMemFilerWrRand	  100000	     16768 ns/op	 978.75 MB/s
+BenchmarkMemFilerRdRand	  200000	     13033 ns/op	1258.43 MB/s
 
 pgBits: 15
-BenchmarkMemFilerWrSeq	  100000	     22020 ns/op	1453.17 MB/s
-BenchmarkMemFilerRdSeq	  200000	      8486 ns/op	3770.90 MB/s
+BenchmarkMemFilerWrSeq	  200000	     10309 ns/op	3103.93 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11126 ns/op	2876.12 MB/s
+BenchmarkMemFilerWrRand	   50000	     31985 ns/op	1021.74 MB/s
+BenchmarkMemFilerRdRand	  100000	     25217 ns/op	1297.65 MB/s
 
 pgBits: 16
-BenchmarkMemFilerWrSeq	  100000	     22366 ns/op	1430.74 MB/s
-BenchmarkMemFilerRdSeq	  200000	      8993 ns/op	3558.29 MB/s
+BenchmarkMemFilerWrSeq	  200000	     10324 ns/op	3099.45 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11201 ns/op	2856.80 MB/s
+BenchmarkMemFilerWrRand	   20000	     55226 ns/op	1184.76 MB/s
+BenchmarkMemFilerRdRand	   50000	     48316 ns/op	1355.16 MB/s
 
 pgBits: 17
-BenchmarkMemFilerWrSeq	  100000	     22426 ns/op	1426.90 MB/s
-BenchmarkMemFilerRdSeq	  200000	      8970 ns/op	3567.36 MB/s
+BenchmarkMemFilerWrSeq	  200000	     10377 ns/op	3083.53 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11018 ns/op	2904.18 MB/s
+BenchmarkMemFilerWrRand	   10000	    143425 ns/op	 913.12 MB/s
+BenchmarkMemFilerRdRand	   20000	     95267 ns/op	1376.99 MB/s
 
 pgBits: 18
-BenchmarkMemFilerWrSeq	  100000	     22540 ns/op	1419.68 MB/s
-BenchmarkMemFilerRdSeq	  200000	      8985 ns/op	3561.27 MB/s
-
-----
-$ gp
-? \\ BenchmarkMemFilerWrSeq
-? plot(x=8,19,[474,831,1393,1420,1446,1455,1456,1453,1431,1427,1420][truncate(x-7)]);
-
-     1456 |'''''''''''''''''_____"""""""""""""""""""""""xxxxxxxxxxxx______
-          |           """"""                                             |
-          |           :                                                  |
-          |           :                                                  |
-          |           :                                                  |
-          |          :                                                   |
-          |          :                                                   |
-          |          :                                                   |
-          |          :                                                   |
-          |     xxxxxx                                                   |
-          |     :                                                        |
-          |     :                                                        |
-          |    :                                                         |
-          |    :                                                         |
-          ______                                                         |
-          |                                                              |
-          |                                                              |
-          |                                                              |
-          |                                                              |
-          |                                                              |
-          |                                                              |
-        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-          8                                                             19
-? \\ BenchmarkMemFilerRdSeq
-? plot(x=8,19,[500,885,1585,2272,2969,3347,3556,3771,3558,3567,3561][truncate(x-7)]);
-
-     3771 |''''''''''''''''''''''''''''''''''''''''"""""'''''''''''''''''|
-          |                                  xxxxxx     xxxxxxxxxxxxxxxxxx
-          |                            xxxxxx                            |
-          |                                                              |
-          |                      ______                                  |
-          |                      :                                       |
-          |                     :                                        |
-          |                     :                                        |
-          |                 _____                                        |
-          |                 :                                            |
-          |                :                                             |
-          |                :                                             |
-          |           ______                                             |
-          |           :                                                  |
-          |          :                                                   |
-          |          :                                                   |
-          |     ______                                                   |
-          |                                                              |
-          ______                                                         |
-          |                                                              |
-          |                                                              |
-        0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-          8                                                             19
-?
+BenchmarkMemFilerWrSeq	  200000	     10312 ns/op	3102.96 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11069 ns/op	2890.84 MB/s
+BenchmarkMemFilerWrRand	    5000	    280910 ns/op	 934.14 MB/s
+BenchmarkMemFilerRdRand	   10000	    188500 ns/op	1388.17 MB/s
 
 */
 
@@ -118,7 +84,7 @@ import (
 )
 
 const (
-	pgBits = 12
+	pgBits = 16
 	pgSize = 1 << pgBits
 	pgMask = pgSize - 1
 )

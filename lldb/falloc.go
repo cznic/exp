@@ -1171,10 +1171,12 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 	bitMask := [8]byte{1, 2, 4, 8, 16, 32, 64, 128}
 	byteBuf := []byte{0}
 
-	//TODO later
+	//DONE
 	// +performance, this implementation is hopefully correct but _very_
 	// naive, probably good as a prototype only. Use maybe a MemFiler
 	// "cache" etc.
+	// ----
+	// Turns out the OS caching is as effective as it can probably get.
 	bit := func(on bool, h int64) (wasOn bool, err error) {
 		m := bitMask[h&7]
 		off := h >> 3
