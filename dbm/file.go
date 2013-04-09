@@ -292,16 +292,19 @@ func (f *File) writeAt(b []byte, off int64, bits bool) (n int, err error) {
 
 // As os.File.Truncate().
 func (f *File) Truncate(size int64) (err error) {
-	//TODO rework to be synchronous.
+	f.db.enter()
 
 	a := (*Array)(f)
 	switch {
 	case size < 0:
+		f.db.leave()
 		return &lldb.ErrINVAL{Src: "dbm.File.Truncate size", Val: size}
 	case size == 0:
-		return a.Clear() //TODO a.clear, db.leave afterwards
+		f.db.leave()
+		return a.Clear()
 	}
 
+	f.db.leave()
 	first := size >> pgBits
 	if size&pgMask != 0 {
 		first++

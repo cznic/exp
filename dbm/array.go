@@ -46,11 +46,11 @@ func (a *Array) validate(canCreate bool) (ok bool, err error) {
 	}
 
 	switch a.namespace {
-	case 'a':
+	case arraysPrefix:
 		a.tree, err = a.db.acache.getTree(a.db, arraysPrefix, a.name, canCreate, aCacheSize)
-	case 'f':
+	case filesPrefix:
 		a.tree, err = a.db.fcache.getTree(a.db, filesPrefix, a.name, canCreate, fCacheSize)
-	case 's':
+	case systemPrefix:
 		a.tree, err = a.db.scache.getTree(a.db, systemPrefix, a.name, canCreate, sCacheSize)
 	default:
 		panic("internal error")

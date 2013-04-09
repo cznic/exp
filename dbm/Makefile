@@ -4,6 +4,7 @@ all:
 	go test
 	go build
 	go vet
+	go install
 	make todo
 
 todo:

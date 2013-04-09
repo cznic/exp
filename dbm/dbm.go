@@ -9,7 +9,6 @@ package dbm
 
 import (
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -24,9 +23,9 @@ const (
 	sCacheSize = 50
 
 	rname        = "2remove" // Array shredder
-	arraysPrefix = "a"
-	filesPrefix  = "f"
-	systemPrefix = "s"
+	arraysPrefix = 'A'
+	filesPrefix  = 'F'
+	systemPrefix = 'S'
 )
 
 var (
@@ -236,7 +235,7 @@ func (db *DB) array_(canCreate bool, array string, subscripts ...interface{}) (a
 
 	a.tree, err = db.acache.getTree(db, arraysPrefix, array, canCreate, aCacheSize)
 	a.name = array
-	a.namespace = 'a'
+	a.namespace = arraysPrefix
 	return
 }
 
@@ -244,7 +243,7 @@ func (db *DB) sysArray(canCreate bool, array string) (a Array, err error) {
 	a.db = db
 	a.tree, err = db.scache.getTree(db, systemPrefix, array, canCreate, sCacheSize)
 	a.name = array
-	a.namespace = 's'
+	a.namespace = systemPrefix
 	return a, err
 }
 
@@ -253,7 +252,7 @@ func (db *DB) fileArray(canCreate bool, name string) (f File, err error) {
 	a.db = db
 	a.tree, err = db.fcache.getTree(db, filesPrefix, name, canCreate, fCacheSize)
 	a.name = name
-	a.namespace = 'f'
+	a.namespace = filesPrefix
 	return File(a), err
 }
 
@@ -369,7 +368,7 @@ func (db *DB) RemoveFile(file string) (err error) {
 	return db.removeArray(filesPrefix, file)
 }
 
-func (db *DB) removeArray(prefix, array string) (err error) {
+func (db *DB) removeArray(prefix int, array string) (err error) {
 	if db.stop == nil {
 		db.stop = make(chan int)
 	}
@@ -477,7 +476,6 @@ func (db *DB) victor(removes Array, h int64) {
 		return
 	}
 
-	//TODO(jnml) Later/performance: Add lldb.DeleteAnyKey()
 	db.bkl.Unlock()
 	for {
 		runtime.Gosched()
@@ -489,21 +487,8 @@ func (db *DB) victor(removes Array, h int64) {
 		default:
 		}
 
-		db.bkl.Lock()
-		k, v, err := t.Last()
-		if err != nil {
-			db.bkl.Unlock()
-			finished = err == io.EOF
-			return
-		}
-
-		if k == nil && v == nil {
-			db.bkl.Unlock()
-			finished = true
-			return
-		}
-
-		if err := t.Delete(k); err != nil {
+		db.enter()
+		if finished, err = t.DeleteAny(); finished || err != nil {
 			db.leave()
 			return
 		}

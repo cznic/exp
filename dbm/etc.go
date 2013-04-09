@@ -80,7 +80,7 @@ func (t *treeCache) get() (r map[string]*lldb.BTree) {
 	return *t
 }
 
-func (t *treeCache) getTree(db *DB, prefix, name string, canCreate bool, cacheSize int) (r *lldb.BTree, err error) {
+func (t *treeCache) getTree(db *DB, prefix int, name string, canCreate bool, cacheSize int) (r *lldb.BTree, err error) {
 	m := t.get()
 	r, ok := m[name]
 	if ok {
