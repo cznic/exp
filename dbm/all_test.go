@@ -2142,7 +2142,7 @@ func TestBits0(t *testing.T) {
 	}
 
 	f := db.File("TestBits0")
-	b := f.uBits()
+	b := f.Bits()
 	ref := map[uint64]bool{}
 
 	rng := rand.New(rand.NewSource(42))
@@ -2156,7 +2156,7 @@ func TestBits0(t *testing.T) {
 
 		switch op {
 		case opOn:
-			if err = b.uOn(bit, run); err != nil {
+			if err = b.On(bit, run); err != nil {
 				t.Error(err)
 				return
 			}
@@ -2164,7 +2164,7 @@ func TestBits0(t *testing.T) {
 				ref[i] = true
 			}
 		case opOff:
-			if err = b.uOff(bit, run); err != nil {
+			if err = b.Off(bit, run); err != nil {
 				t.Error(err)
 				return
 			}
@@ -2172,7 +2172,7 @@ func TestBits0(t *testing.T) {
 				ref[i] = false
 			}
 		case opCpl:
-			if err = b.uCpl(bit, run); err != nil {
+			if err = b.Cpl(bit, run); err != nil {
 				t.Error(err)
 				return
 			}
@@ -2184,19 +2184,19 @@ func TestBits0(t *testing.T) {
 	}
 
 	for bit, v := range ref {
-		gv, run, err := b.uGet(bit, 1)
+		gv, err := b.Get(bit)
 		if err != nil {
 			t.Error(err)
 			return
 		}
 
-		if gv != v || run != 1 {
+		if gv != v {
 			d, err := dump(f.tree)
 			if err != nil {
 				t.Log(err)
 			}
 			t.Logf("\n%s", d)
-			t.Errorf("%#x %#x %t %t", bit, run, gv, v)
+			t.Errorf("%#x %t %t", bit, gv, v)
 			return
 		}
 	}
@@ -2218,7 +2218,7 @@ func benchmarkBitsOn(b *testing.B, n uint64) {
 	}
 
 	f := db.File("TestBits0")
-	bits := f.uBits()
+	bits := f.Bits()
 
 	rng := rand.New(rand.NewSource(42))
 	a := make([]uint64, 1024*1024)
@@ -2228,7 +2228,7 @@ func benchmarkBitsOn(b *testing.B, n uint64) {
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		bits.uOn(a[i&0xfffff], n)
+		bits.On(a[i&0xfffff], n)
 	}
 
 	b.StopTimer()
@@ -2245,4 +2245,78 @@ func BenchmarkBitsOn1024(b *testing.B) {
 
 func BenchmarkBitsOn65536(b *testing.B) {
 	benchmarkBitsOn(b, 65536)
+}
+
+func BenchmarkBitsGetSeq(b *testing.B) {
+	b.StopTimer()
+	os.Remove(dbname)
+
+	db, err := Create(dbname)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer os.Remove(dbname)
+	}
+
+	f := db.File("TestBitsGetSeq")
+	rng := rand.New(rand.NewSource(42))
+	buf := make([]byte, 1024*1024)
+	for i := range buf {
+		buf[i] = byte(rng.Int63())
+	}
+
+	if _, err := f.WriteAt(buf, 0); err != nil {
+		b.Fatal(err)
+	}
+
+	bits := f.Bits()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		bits.Get(uint64(i) & 0x7fffff)
+	}
+	b.StopTimer()
+}
+
+func BenchmarkBitsGetRnd(b *testing.B) {
+	b.StopTimer()
+	os.Remove(dbname)
+
+	db, err := Create(dbname)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer os.Remove(dbname)
+	}
+
+	f := db.File("TestBitsGetRnd")
+	rng := rand.New(rand.NewSource(42))
+	buf := make([]byte, 1024*1024)
+	for i := range buf {
+		buf[i] = byte(rng.Int63())
+	}
+
+	if _, err := f.WriteAt(buf, 0); err != nil {
+		b.Fatal(err)
+	}
+
+	bits := f.Bits()
+
+	a := make([]uint64, 1024*1024)
+	for i := range a {
+		a[i] = uint64(rng.Int63() & 0x7fffff)
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		bits.Get(a[i&0xfffff])
+	}
+	b.StopTimer()
 }

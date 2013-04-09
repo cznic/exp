@@ -5,6 +5,8 @@
 package dbm
 
 import (
+	"sync"
+
 	"github.com/cznic/mathutil"
 )
 
@@ -13,6 +15,52 @@ const (
 	opOff
 	opCpl
 )
+
+const (
+	bitCacheBits = 11
+	bitCacheSize = 1 << bitCacheBits
+	bitCacheMask = bitCacheSize - 1
+)
+
+/*
+
+bitCacheBits: 8
+BenchmarkBitsGetSeq	20000000	       124 ns/op
+BenchmarkBitsGetRnd	   10000	    146852 ns/op
+
+bitCacheBits: 9
+BenchmarkBitsGetSeq	20000000	        99.9 ns/op
+BenchmarkBitsGetRnd	   10000	    146174 ns/op
+
+bitCacheBits: 10
+BenchmarkBitsGetSeq	20000000	        88.3 ns/op
+BenchmarkBitsGetRnd	   10000	    148670 ns/op
+
+bitCacheBits: 11
+BenchmarkBitsGetSeq	20000000	        80.9 ns/op
+BenchmarkBitsGetRnd	   10000	    146512 ns/op
+
+bitCacheBits: 12
+BenchmarkBitsGetSeq	20000000	        80.9 ns/op
+BenchmarkBitsGetRnd	   10000	    146713 ns/op
+
+bitCacheBits: 13
+BenchmarkBitsGetSeq	20000000	        79.4 ns/op
+BenchmarkBitsGetRnd	   10000	    146347 ns/op
+
+bitCacheBits: 14
+BenchmarkBitsGetSeq	20000000	        79.0 ns/op
+BenchmarkBitsGetRnd	   10000	    146128 ns/op
+
+bitCacheBits: 15
+BenchmarkBitsGetSeq	20000000	        78.2 ns/op
+BenchmarkBitsGetRnd	   10000	    146194 ns/op
+
+bitCacheBits: 16
+BenchmarkBitsGetSeq	20000000	        78.0 ns/op
+BenchmarkBitsGetRnd	   10000	    144808 ns/op
+
+*/
 
 var (
 	byteMask = [8][8]byte{ // [from][to]
@@ -37,14 +85,28 @@ func init() {
 	}
 }
 
-// uBits are a File with a bit-manipulation set of methods. It can be useful as
+// Bits is a File with a bit-manipulation set of methods. It can be useful as
 // e.g. a bitmap index[1].
 //
+// Mutating or reading single bits in a disk file is not a fast operation. Bits
+// include a memory cache improving sequential scan/access by Get. The cache is
+// coherent with writes/updates but _is not_ coherent with other Bits instances
+// of the same underlying File. It is thus recommended to share a single *Bits
+// instance between all writers and readers of the same bit file.  Concurrent
+// overlapping updates are safe, but the order of their execution is
+// unspecified and they may even interleave.  Coordination in the dbm client is
+// needed in such case.
+//
 //   [1]: http://en.wikipedia.org/wiki/Bitmap_index
-type uBits File
+type Bits struct {
+	f     *File
+	rwmu  sync.RWMutex
+	page  int64
+	cache [bitCacheSize]byte
+}
 
-func (b *uBits) pageBytes(pgI int64, pgFrom, pgTo, op int) (err error) {
-	f := (*File)(b)
+func (b *Bits) pageBytes(pgI int64, pgFrom, pgTo, op int) (err error) {
+	f := b.f
 	a := (*Array)(f)
 	switch op {
 	case opOn:
@@ -81,8 +143,8 @@ func (b *uBits) pageBytes(pgI int64, pgFrom, pgTo, op int) (err error) {
 	panic("unreachable")
 }
 
-func (b *uBits) pageByte(off int64, fromBit, toBit, op int) (err error) {
-	f := (*File)(b)
+func (b *Bits) pageByte(off int64, fromBit, toBit, op int) (err error) {
+	f := b.f
 	var buf [1]byte
 	if _, err = f.readAt(buf[:], off, true); err != nil {
 		return
@@ -100,7 +162,7 @@ func (b *uBits) pageByte(off int64, fromBit, toBit, op int) (err error) {
 	return
 }
 
-func (b *uBits) pageBits(pgI int64, fromBit, toBit, op int) (err error) {
+func (b *Bits) pageBits(pgI int64, fromBit, toBit, op int) (err error) {
 	pgFrom, pgTo := fromBit>>3, toBit>>3
 	switch from, to := fromBit&7, toBit&7; {
 	case from == 0 && to == 7:
@@ -172,12 +234,13 @@ func (b *uBits) pageBits(pgI int64, fromBit, toBit, op int) (err error) {
 	panic("unreachable")
 }
 
-func (b *uBits) ops(fromBit, toBit uint64, op int) (err error) {
+func (b *Bits) ops(fromBit, toBit uint64, op int) (err error) {
 	const (
 		bitsPerPage     = pgSize * 8
 		bitsPerPageMask = bitsPerPage - 1
 	)
 
+	b.page = -1
 	rem := toBit - fromBit + 1
 	pgI := int64(fromBit >> (pgBits + 3))
 	for rem != 0 {
@@ -196,7 +259,7 @@ func (b *uBits) ops(fromBit, toBit uint64, op int) (err error) {
 }
 
 // On sets run bits starting from bit.
-func (b *uBits) uOn(bit, run uint64) (err error) {
+func (b *Bits) On(bit, run uint64) (err error) {
 	if run == 0 {
 		return
 	}
@@ -205,7 +268,7 @@ func (b *uBits) uOn(bit, run uint64) (err error) {
 }
 
 // Off resets run bits starting from bit.
-func (b *uBits) uOff(bit, run uint64) (err error) {
+func (b *Bits) Off(bit, run uint64) (err error) {
 	if run == 0 {
 		return
 	}
@@ -214,7 +277,7 @@ func (b *uBits) uOff(bit, run uint64) (err error) {
 }
 
 // Cpl complements run bits starting from bit.
-func (b *uBits) uCpl(bit, run uint64) (err error) {
+func (b *Bits) Cpl(bit, run uint64) (err error) {
 	if run == 0 {
 		return
 	}
@@ -222,17 +285,22 @@ func (b *uBits) uCpl(bit, run uint64) (err error) {
 	return b.ops(bit, bit+run-1, opCpl)
 }
 
-// Get returns the value at bit and how long is the run.
-func (b *uBits) uGet(bit, maxrun uint64) (val bool, run uint64, err error) {
-	f := (*File)(b)
-	if maxrun == 1 {
-		var buf [1]byte
-		if _, err = f.readAt(buf[:], int64(bit>>3), true); err != nil {
+// Get returns the value at bit.
+func (b *Bits) Get(bit uint64) (val bool, err error) {
+	f := b.f
+	byte_ := bit >> 3
+	pg := int64(byte_ >> bitCacheBits)
+	b.rwmu.Lock()
+	if pg != b.page {
+		if _, err = f.readAt(b.cache[:], pg*bitCacheSize, true); err != nil {
+			b.rwmu.Unlock()
+			b.page = -1
 			return
 		}
-
-		return buf[0]&bitMask[bit&7] != 0, 1, nil
+		b.page = pg
 	}
 
-	panic("TODO") //TODO
+	val = b.cache[byte_&bitCacheMask]&bitMask[bit&7] != 0
+	b.rwmu.Unlock()
+	return
 }

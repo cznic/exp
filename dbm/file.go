@@ -420,6 +420,6 @@ func (f *File) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // Bits return a bitmap index backed by f.
-func (f *File) uBits() *uBits {
-	return (*uBits)(f)
+func (f *File) Bits() *Bits {
+	return &Bits{f: f, page: -1}
 }
