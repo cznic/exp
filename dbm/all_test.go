@@ -2320,3 +2320,112 @@ func BenchmarkBitsGetRnd(b *testing.B) {
 	}
 	b.StopTimer()
 }
+
+func TestTmpDirRemoval(t *testing.T) {
+	os.Remove(dbname)
+
+	db, err := Create(dbname)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer os.Remove(dbname)
+	}
+
+	names := []string{"b", "/b", "/b/", "tmp", "/tmp", "/tmp/", "/tmp/foo", "z", "/z", "/z/"}
+
+	for i, name := range names {
+		if err := db.Set(i, name, 1, 2, 3); err != nil {
+			t.Error(err)
+			return
+		}
+	}
+
+	for i, name := range names {
+
+		f := db.File(name)
+		if _, err := f.WriteAt([]byte{byte(i)}, int64(i)); err != nil {
+			t.Error(err)
+			return
+		}
+	}
+
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(dbname)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ref := map[string]bool{}
+	for _, name := range names {
+		ref[name] = true
+	}
+
+	aa, err := db.Arrays()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	s, err := aa.Slice(nil, nil)
+	if err := s.Do(func(subscripts, value []interface{}) (bool, error) {
+		k := subscripts[0].(string)
+		delete(ref, k)
+		return true, nil
+	}); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if len(ref) == 0 {
+		t.Error(0)
+		return
+	}
+
+	for k := range ref {
+		if !strings.HasPrefix(k, "/tmp/") {
+			t.Error(k)
+			return
+		}
+	}
+
+	ref = map[string]bool{}
+	for _, name := range names {
+		ref[name] = true
+	}
+
+	ff, err := db.Files()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	s, err = ff.Slice(nil, nil)
+	if err := s.Do(func(subscripts, value []interface{}) (bool, error) {
+		k := subscripts[0].(string)
+		delete(ref, k)
+		return true, nil
+	}); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if len(ref) == 0 {
+		t.Error(0)
+		return
+	}
+
+	for k := range ref {
+		if !strings.HasPrefix(k, "/tmp/") {
+			t.Error(k)
+			return
+		}
+	}
+
+}

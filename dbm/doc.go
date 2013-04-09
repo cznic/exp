@@ -226,8 +226,8 @@ path should be (by recommendation) again a valid and exported Go identifier.
 Name spaces
 
 Arrays namespace and Files namespace are disjoint. Entities in any namespace
-having a rooted name with prefix '/tmp/' (TODO) are removed from the DB
-automatically on Open.
+having a rooted name with prefix '/tmp/' are removed from the DB automatically
+on Open.
 
 Access denied errors
 

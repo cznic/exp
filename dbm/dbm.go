@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/cznic/exp/lldb"
@@ -410,15 +411,56 @@ func (db *DB) removeArray(prefix int, array string) (err error) {
 }
 
 func (db *DB) boot() (err error) {
-	//TODO+ wiping of {"a", "/tmp"}, {"f", "/tmp"}
+	const tmp = "/tmp/"
+
+	aa, err := db.Arrays()
+	if err != nil {
+		return
+	}
+
+	s, err := aa.Slice([]interface{}{tmp}, nil)
+	if err = noEof(err); err != nil {
+		return
+	}
+
+	s.Do(func(subscripts, value []interface{}) (r bool, err error) {
+		k := subscripts[0].(string)
+		if !strings.HasPrefix(k, tmp) {
+			return false, nil
+		}
+
+		return true, db.RemoveArray(k)
+
+	})
+
+	ff, err := db.Files()
+	if err != nil {
+		return
+	}
+
+	s, err = ff.Slice([]interface{}{tmp}, nil)
+	if err = noEof(err); err != nil {
+		return
+	}
+
+	s.Do(func(subscripts, value []interface{}) (r bool, err error) {
+		k := subscripts[0].(string)
+		if !strings.HasPrefix(k, tmp) {
+			return false, nil
+		}
+
+		return true, db.RemoveFile(k)
+
+	})
+
 	removes, err := db.sysArray(false, rname)
 	if removes.tree == nil || err != nil {
 		return
 	}
 
-	s, err := removes.Slice(nil, nil)
-	if err != nil {
-		return noEof(err)
+	s, err = removes.Slice(nil, nil)
+	if err = noEof(err); err != nil {
+		return
 	}
 
 	var a []int64
