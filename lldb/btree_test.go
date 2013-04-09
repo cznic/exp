@@ -6,6 +6,7 @@ package lldb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -1216,5 +1217,34 @@ func TestSeekLast(t *testing.T) {
 
 	if string(k) != "a" || string(v) != "b" {
 		t.Fatal(k, v)
+	}
+}
+
+func TestDeleteAny(t *testing.T) {
+	const N = 1e4
+	rng := rand.New(rand.NewSource(42))
+	ref := map[uint32]bool{}
+	tr := NewBTree(nil)
+	data := []byte{42}
+	var key [4]byte
+	for i := 0; i < N; i++ {
+		k := uint32(rng.Int())
+		binary.LittleEndian.PutUint32(key[:], k)
+		if err := tr.Set(key[:], data); err != nil {
+			t.Fatal(err)
+		}
+
+		ref[k] = true
+	}
+
+	for i := len(ref); i != 0; i-- {
+		empty, err := tr.DeleteAny()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if empty && i != 1 {
+			t.Fatal(i)
+		}
 	}
 }

@@ -4,6 +4,7 @@ all:
 	go test -timeout 1h
 	go build
 	go vet
+	go install
 	make todo
 
 todo:

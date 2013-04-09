@@ -84,6 +84,17 @@ func (t *BTree) Delete(key []byte) (err error) {
 	return
 }
 
+// DeleteAny deletes one key and its associated value from the tree. If the
+// tree is empty on return then empty is true.
+func (t *BTree) DeleteAny() (empty bool, err error) {
+	if t == nil {
+		err = errors.New("BTree method invoked on nil receiver")
+		return
+	}
+
+	return t.root.deleteAny(t.store)
+}
+
 func elem(v interface{}) string {
 	switch x := v.(type) {
 	default:
@@ -1741,6 +1752,7 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 					if value, err = (*btreeDataPage)(&dp).extract(a, 0); err != nil {
 						return nil, err
 					}
+
 					return value, a.Realloc(dph, dp)
 				}
 
@@ -1790,6 +1802,77 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 		parentIndex = index
 		parent = ph
 		ph = btreeIndexPage(p).child(index)
+	}
+}
+
+func (root btree) deleteAny(a btreeStore) (bool, error) {
+	var r []byte
+	var err error
+	if r, err = a.Get(nil, int64(root)); err != nil {
+		return false, err
+	}
+
+	iroot := b2h(r)
+	if iroot == 0 {
+		return true, nil
+	}
+
+	ph := iroot
+	parentIndex := -1
+	var parent int64
+	for {
+		var p btreePage
+		if p, err = a.Get(p, ph); err != nil {
+			return false, err
+		}
+
+		index := p.len() / 2
+		if p.isIndex() {
+			dph := btreeIndexPage(p).dataPage(index)
+			dp, err := a.Get(nil, dph)
+			if err != nil {
+				return false, err
+			}
+
+			if btreeDataPage(dp).len() > kData {
+				if _, err = (*btreeDataPage)(&dp).extract(a, 0); err != nil {
+					return false, err
+				}
+
+				return false, a.Realloc(dph, dp)
+			}
+
+			if btreeIndexPage(p).len() < kIndex && ph != iroot {
+				if err = (*btreeIndexPage)(&p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
+					return false, err
+				}
+			}
+			parentIndex = index + 1
+			parent = ph
+			ph = btreeIndexPage(p).child(parentIndex)
+			continue
+		}
+
+		_, err = (*btreeDataPage)(&p).extract(a, index)
+		if p.len() >= kData {
+			err = a.Realloc(ph, p)
+			return false, err
+		}
+
+		if ph != iroot {
+			err = btreeDataPage(p).underflow(a, int64(root), iroot, parent, ph, parentIndex)
+			return false, err
+		}
+
+		if p.len() == 0 {
+			if err = a.Free(ph); err != nil {
+				return true, err
+			}
+
+			return true, a.Realloc(int64(root), zeros[:7])
+		}
+
+		return false, a.Realloc(ph, p)
 	}
 }
 
