@@ -138,16 +138,16 @@ func (f *bitFiler) WriteAt(b []byte, off int64) (n int, err error) {
 // First approximation: uRollbackFiler starts in non transactional mode
 // and it updates are written directly through the Filer it wraps. On
 // BeginUpdate a transaction is initiated and all updates are held in memory,
-// they're not anymore written to the wrapped Filler. On a matching EndUpdate
+// they're not anymore written to the wrapped Filer. On a matching EndUpdate
 // the updates held in memory are actually written to the wrapped Filer.
 //
 // Going into more details: Transactions can nest. The above described rollback
 // mechanism works the same for every nesting level, but the physical write to
-// the wrapped Filler happens only when the outer most transaction nesting
+// the wrapped Filer happens only when the outer most transaction nesting
 // level is closed (or if there are writes outside of any transaction).
 //
 // Invoking Rollback is an alternative to EndUpdate. It discards all changes
-// made at the current transaction level and returns the "state" of the Filler
+// made at the current transaction level and returns the "state" of the Filer
 // to what it was before the corresponding BeginUpdate.
 //
 // During an open transaction, all reads (using ReadAt) are "dirty" reads,
@@ -181,7 +181,7 @@ func (f *bitFiler) WriteAt(b []byte, off int64) (n int, err error) {
 // NOTE: uRollbackFiler is a generic solution intended to wrap Filers provided
 // by this package which do not implement any of the transactional methods.
 // uRollbackFiler thus _does not_ invoke any of the transactional methods of its
-// wrapped Filler.
+// wrapped Filer.
 //
 // NOTE2: Using uRollbackFiler, but failing to ever invoke BeginUpdate/EndUpdate
 // or Rollback will cause Checkpoint to be never called. However, there's the
@@ -196,7 +196,7 @@ type uRollbackFiler struct {
 	// at this checkpoint.  Calling Filer's Truncate(sz), as the last thing
 	// should be normally sufficient.
 	Checkpoint func(f Filer, sz int64) error
-	// Writer is used to do the real updating of the wrapped Filler.
+	// Writer is used to do the real updating of the wrapped Filer.
 	Writer func(b []byte, off int64) (int, error)
 	f      Filer // Always the original one
 	parent *uRollbackFiler
@@ -206,7 +206,7 @@ type uRollbackFiler struct {
 }
 
 // NewRollbackFiler returns a uRollbackFiler wrapping f.
-func NewRollbackFiler(f Filer) (r *uRollbackFiler, err error) {
+func uNewRollbackFiler(f Filer) (r *uRollbackFiler, err error) {
 	sz, err := f.Size()
 	if err != nil {
 		return
@@ -219,12 +219,12 @@ func (r *uRollbackFiler) inTransaction() bool {
 	return r.parent != nil
 }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) BeginUpdate() {
 	panic("TODO")
 }
 
-// Implements Filler.
+// Implements Filer.
 //
 // Close will return an error if not invoked at nesting level 0.  However, to
 // allow emergency closing from eg. a signal handler; if Close is invoked
@@ -246,7 +246,7 @@ func (r *uRollbackFiler) Close() (err error) {
 	return r.f.Close()
 }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) EndUpdate() error {
 	if !r.inTransaction() {
 		return &ErrPERM{(r.f.Name() + ":EndUpdate")}
@@ -255,13 +255,13 @@ func (r *uRollbackFiler) EndUpdate() error {
 	panic("TODO")
 }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) Name() string { return r.f.Name() }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) PunchHole(off, size int64) error { panic("TODO") }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) ReadAt(b []byte, off int64) (n int, err error) {
 	if !r.inTransaction() {
 		return r.f.ReadAt(b, off)
@@ -270,16 +270,16 @@ func (r *uRollbackFiler) ReadAt(b []byte, off int64) (n int, err error) {
 	panic("TODO")
 }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) Rollback() error { panic("TODO") }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) Size() (int64, error) { panic("TODO") }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) Truncate(size int64) error { panic("TODO") }
 
-// Implements Filler.
+// Implements Filer.
 func (r *uRollbackFiler) WriteAt(b []byte, off int64) (n int, err error) {
 	if !r.inTransaction() {
 		return r.Writer(b, off)
