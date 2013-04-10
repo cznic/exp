@@ -49,6 +49,10 @@ var (
 	newMemFiler = func() Filer {
 		return NewMemFiler()
 	}
+
+	nwBitFiler = func() Filer {
+		return newBitFiler()
+	}
 )
 
 func TestFilerNesting(t *testing.T) {
@@ -102,6 +106,7 @@ func testFilerNesting(t *testing.T, nf newFunc) {
 func TestFilerTruncate(t *testing.T) {
 	testFilerTruncate(t, newFileFiler)
 	testFilerTruncate(t, newMemFiler)
+	testFilerTruncate(t, nwBitFiler)
 }
 
 func testFilerTruncate(t *testing.T, nf newFunc) {
@@ -177,6 +182,7 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 func TestFilerReadAtWriteAt(t *testing.T) {
 	testFilerReadAtWriteAt(t, newFileFiler)
 	testFilerReadAtWriteAt(t, newMemFiler)
+	testFilerReadAtWriteAt(t, nwBitFiler)
 }
 
 func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
@@ -324,6 +330,7 @@ func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
 func TestInnerFiler(t *testing.T) {
 	testInnerFiler(t, newFileFiler)
 	testInnerFiler(t, newMemFiler)
+	testInnerFiler(t, nwBitFiler)
 }
 
 func testInnerFiler(t *testing.T, nf newFunc) {
@@ -526,6 +533,7 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 func TestFileReadAtHole(t *testing.T) {
 	testFileReadAtHole(t, newFileFiler)
 	testFileReadAtHole(t, newMemFiler)
+	testFileReadAtHole(t, nwBitFiler)
 }
 
 func testFileReadAtHole(t *testing.T, nf newFunc) {
