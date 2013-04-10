@@ -349,7 +349,12 @@ func (db *DB) setRemoving(h int64, flag bool) (r bool) {
 	}
 
 	r = db.removing[h]
-	db.removing[h] = flag
+	switch flag {
+	case true:
+		db.removing[h] = flag
+	case false:
+		delete(db.removing, h)
+	}
 	return
 }
 
