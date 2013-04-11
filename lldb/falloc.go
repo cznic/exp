@@ -15,7 +15,7 @@ import (
 	"github.com/cznic/zappy"
 )
 
-// A AllocStats records statistics about a Filer. It can be optionally filled by
+// AllocStats record statistics about a Filer. It can be optionally filled by
 // Allocator.Verify, if successful.
 type AllocStats struct {
 	TotalAtoms  int64 // total number of atoms == AllocAtoms + FreeAtoms

@@ -233,6 +233,8 @@ func (f *MemFiler) Truncate(size int64) (err error) {
 		return &ErrINVAL{"Truncate size", size}
 	case size == 0:
 		f.m = memFilerMap{}
+		f.size = 0
+		return
 	}
 
 	first := size >> pgBits

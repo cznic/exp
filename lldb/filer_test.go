@@ -51,7 +51,7 @@ var (
 	}
 
 	nwBitFiler = func() Filer {
-		return newBitFiler()
+		return newBitFiler(nil)
 	}
 )
 

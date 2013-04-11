@@ -382,6 +382,11 @@ func BenchmarkBTreePut16(b *testing.B) {
 	benchmarkBTreePut(b, v)
 }
 
+func BenchmarkBTreePut32(b *testing.B) {
+	v := make([]byte, 32)
+	benchmarkBTreePut(b, v)
+}
+
 func benchmarkBTreeGet(b *testing.B, v []byte) {
 	b.StopTimer()
 	rng := rand.New(rand.NewSource(42))
@@ -406,17 +411,22 @@ func benchmarkBTreeGet(b *testing.B, v []byte) {
 }
 
 func BenchmarkBTreeGet0(b *testing.B) {
-	benchmarkBTreePut(b, nil)
+	benchmarkBTreeGet(b, nil)
 }
 
 func BenchmarkBTreeGet8(b *testing.B) {
 	v := make([]byte, 8)
-	benchmarkBTreePut(b, v)
+	benchmarkBTreeGet(b, v)
 }
 
 func BenchmarkBTreeGet16(b *testing.B) {
 	v := make([]byte, 16)
-	benchmarkBTreePut(b, v)
+	benchmarkBTreeGet(b, v)
+}
+
+func BenchmarkBTreeGet32(b *testing.B) {
+	v := make([]byte, 32)
+	benchmarkBTreeGet(b, v)
 }
 
 func TestBTreeSeek(t *testing.T) {
