@@ -18,7 +18,7 @@ import (
 var _ Filer = &bitFiler{} // Ensure bitFiler is a Filer.
 
 const (
-	bfBits = 8 //TODO benchmark tune
+	bfBits = 3 //TODO benchmark tune
 	bfSize = 1 << bfBits
 	bfMask = bfSize - 1
 )
@@ -177,15 +177,15 @@ func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
 		}
 		nc = copy(pg.data[pgO:], b)
 		pgI++
-		pgO = 0
-		rem -= nc
-		b = b[nc:]
 		if dirty {
 			pg.dirty = true
 			for i := pgO; i < pgO+nc; i++ {
 				pg.flags[i>>3] |= bitmask[i&7]
 			}
 		}
+		pgO = 0
+		rem -= nc
+		b = b[nc:]
 	}
 	f.size = mathutil.MaxInt64(f.size, off+int64(n))
 	return
@@ -216,8 +216,8 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 		for pg != nil && pg.dirty {
 			last := false
 			var off int64
-			var first int
-			for i := 0; i < pgSize; i++ {
+			first := -1
+			for i := 0; i < bfSize; i++ {
 				flag := pg.flags[i>>3]&bitmask[i&7] != 0
 				switch {
 				case flag && !last: // Leading edge detected
@@ -228,12 +228,22 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 					if n != i-first {
 						return err
 					}
+					first = -1
 				}
 
 				last = flag
 			}
+			if first >= 0 {
+				i := bfSize
+				n, err := w.WriteAt(pg.data[first:i], off)
+				if n != i-first {
+					return err
+				}
+			}
+
 			pg.dirty = false
 			pg = pg.next
+			pgI++
 		}
 	}
 	return
@@ -488,5 +498,5 @@ func (r *RollbackFiler) WriteAt(b []byte, off int64) (n int, err error) {
 		return 0, &ErrPERM{r.f.Name() + ": WriteAt outside of a transaction"}
 	}
 
-	return r.writerAt.WriteAt(b, off)
+	return r.bitFiler.WriteAt(b, off)
 }

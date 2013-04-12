@@ -58,11 +58,34 @@ var (
 
 		return f
 	}
+
+	newRollbackFiler = func() Filer {
+		f := NewMemFiler()
+
+		var r Filer
+
+		checkpoint := func() (err error) {
+			sz, err := r.Size()
+			if err != nil {
+				return
+			}
+
+			return f.Truncate(sz)
+		}
+
+		r, err := NewRollbackFiler(f, checkpoint, f)
+		if r != nil {
+			panic(err)
+		}
+
+		return r
+	}
 )
 
 func TestFilerNesting(t *testing.T) {
 	testFilerNesting(t, newFileFiler)
 	testFilerNesting(t, newMemFiler)
+	testFilerNesting(t, newRollbackFiler)
 }
 
 func testFilerNesting(t *testing.T, nf newFunc) {
@@ -112,6 +135,7 @@ func TestFilerTruncate(t *testing.T) {
 	testFilerTruncate(t, newFileFiler)
 	testFilerTruncate(t, newMemFiler)
 	testFilerTruncate(t, nwBitFiler)
+	testFilerTruncate(t, newRollbackFiler)
 }
 
 func testFilerTruncate(t *testing.T, nf newFunc) {
@@ -188,6 +212,7 @@ func TestFilerReadAtWriteAt(t *testing.T) {
 	testFilerReadAtWriteAt(t, newFileFiler)
 	testFilerReadAtWriteAt(t, newMemFiler)
 	testFilerReadAtWriteAt(t, nwBitFiler)
+	testFilerReadAtWriteAt(t, newRollbackFiler)
 }
 
 func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
@@ -336,6 +361,7 @@ func TestInnerFiler(t *testing.T) {
 	testInnerFiler(t, newFileFiler)
 	testInnerFiler(t, newMemFiler)
 	testInnerFiler(t, nwBitFiler)
+	testInnerFiler(t, newRollbackFiler)
 }
 
 func testInnerFiler(t *testing.T, nf newFunc) {
@@ -539,6 +565,7 @@ func TestFileReadAtHole(t *testing.T) {
 	testFileReadAtHole(t, newFileFiler)
 	testFileReadAtHole(t, newMemFiler)
 	testFileReadAtHole(t, nwBitFiler)
+	testFileReadAtHole(t, newRollbackFiler)
 }
 
 func testFileReadAtHole(t *testing.T, nf newFunc) {
