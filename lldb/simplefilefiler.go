@@ -37,8 +37,9 @@ func NewSimpleFileFiler(f *os.File) *SimpleFileFiler {
 }
 
 // BeginUpdate implements Filer.
-func (f *SimpleFileFiler) BeginUpdate() {
+func (f *SimpleFileFiler) BeginUpdate() error {
 	f.nest++
+	return nil
 }
 
 // Close implements Filer.

@@ -30,7 +30,7 @@ type Filer interface {
 	// BeginUpdate increments the "nesting" counter (initially zero). Every
 	// call to BeginUpdate must be eventually "balanced" by exactly one of
 	// EndUpdate or Rollback. Calls to BeginUpdate may nest.
-	BeginUpdate()
+	BeginUpdate() error
 
 	// Analogous to os.File.Close().
 	Close() error
@@ -125,7 +125,7 @@ type InnerFiler struct {
 func NewInnerFiler(outer Filer, off int64) *InnerFiler { return &InnerFiler{outer, off} }
 
 // BeginUpdate implements Filer.
-func (f *InnerFiler) BeginUpdate() { f.outer.BeginUpdate() }
+func (f *InnerFiler) BeginUpdate() error { return f.outer.BeginUpdate() }
 
 // Close implements Filer. Notice: InnerFiler.Close is a nop as the actual Close can
 // be performed only by the outer Filer.

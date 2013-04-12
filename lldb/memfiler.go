@@ -108,8 +108,9 @@ func NewMemFiler() *MemFiler {
 }
 
 // BeginUpdate implements Filer.
-func (f *MemFiler) BeginUpdate() {
+func (f *MemFiler) BeginUpdate() error {
 	f.nest++
+	return nil
 }
 
 // Close implements Filer.
@@ -124,7 +125,7 @@ func (f *MemFiler) Close() (err error) {
 // EndUpdate implements Filer.
 func (f *MemFiler) EndUpdate() (err error) {
 	if f.nest == 0 {
-		return &ErrPERM{(f.Name() + ":EndUpdate")}
+		return &ErrPERM{(f.Name() + ": EndUpdate")}
 	}
 
 	f.nest--
@@ -139,11 +140,11 @@ func (f *MemFiler) Name() string {
 // PunchHole implements Filer.
 func (f *MemFiler) PunchHole(off, size int64) (err error) {
 	if off < 0 {
-		return &ErrINVAL{f.Name() + ":PunchHole off", off}
+		return &ErrINVAL{f.Name() + ": PunchHole off", off}
 	}
 
 	if size < 0 || off+size > f.size {
-		return &ErrINVAL{f.Name() + ":PunchHole size", size}
+		return &ErrINVAL{f.Name() + ": PunchHole size", size}
 	}
 
 	first := off >> pgBits

@@ -51,7 +51,12 @@ var (
 	}
 
 	nwBitFiler = func() Filer {
-		return newBitFiler(nil)
+		f, err := newBitFiler(NewMemFiler())
+		if err != nil {
+			panic(err)
+		}
+
+		return f
 	}
 )
 
