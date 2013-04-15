@@ -18,7 +18,7 @@ import (
 var _ Filer = &bitFiler{} // Ensure bitFiler is a Filer.
 
 const (
-	bfBits = 3 //TODO benchmark tune
+	bfBits = 11 //TODO benchmark tune
 	bfSize = 1 << bfBits
 	bfMask = bfSize - 1
 )
@@ -211,6 +211,7 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 
 		for pg.prev != nil && pg.prev.dirty {
 			pg = pg.prev
+			pgI--
 		}
 
 		for pg != nil && pg.dirty {

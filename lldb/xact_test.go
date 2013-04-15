@@ -6,10 +6,19 @@ package lldb
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"math/rand"
 	"testing"
 )
+
+func (f *bitFiler) dump(w io.Writer) {
+	fmt.Fprintf(w, "bitFiler @ %p, size: %d(%#x)\n", f, f.size, f.size)
+	for k, v := range f.m {
+		fmt.Fprintf(w, "bitPage @ %p: pgI %d(%#x): %#v\n", v, k, k, *v)
+	}
+}
 
 func filerBytes(f Filer) []byte {
 	sz, err := f.Size()
@@ -26,10 +35,10 @@ func filerBytes(f Filer) []byte {
 	return b
 }
 
-func cmpFilerBytes(t *testing.T, fa, fb Filer) {
-	a, b := filerBytes(fa), filerBytes(fb)
-	if !bytes.Equal(a, b) {
-		t.Fatalf("Filer content doesn't match")
+func cmpFilerBytes(t *testing.T, fg, fe Filer) {
+	g, e := filerBytes(fg), filerBytes(fe)
+	if !bytes.Equal(g, e) {
+		t.Fatalf("Filer content doesn't match: got\n%sexp:\n%s", hex.Dump(g), hex.Dump(e))
 	}
 }
 
@@ -64,8 +73,8 @@ func TestRollbackFiler0(t *testing.T) {
 
 func TestRollbackFiler1(t *testing.T) {
 	const (
-		N = 1 << 5 //TODO target 1e6, fails for 1<<6
-		O = 1      //TODO 1234
+		N = 1e6
+		O = 1234
 	)
 
 	var r *RollbackFiler
