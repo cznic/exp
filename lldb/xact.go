@@ -310,8 +310,6 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 // by this package which do not implement any of the transactional methods.
 // RollbackFiler thus _does not_ invoke any of the transactional methods of its
 // wrapped Filer.
-//
-//TODO WIP: Untested implementation. Do not use.
 type RollbackFiler struct {
 	bitFiler   *bitFiler
 	checkpoint func() error
@@ -470,7 +468,9 @@ func (r *RollbackFiler) Rollback() (err error) {
 		return &ErrPERM{r.f.Name() + ": Rollback outside of a transaction"}
 	}
 
-	r.bitFiler = r.bitFiler.parent.(*bitFiler)
+	if r.tlevel > 1 {
+		r.bitFiler = r.bitFiler.parent.(*bitFiler)
+	}
 	r.tlevel--
 	return
 }

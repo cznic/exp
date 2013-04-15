@@ -11,6 +11,8 @@ import (
 	"io"
 	"math/rand"
 	"testing"
+
+	"github.com/cznic/mathutil"
 )
 
 func (f *bitFiler) dump(w io.Writer) {
@@ -122,4 +124,174 @@ func TestRollbackFiler1(t *testing.T) {
 	}
 
 	cmpFilerBytes(t, f, g)
+}
+
+func TestRollbackFiler2(t *testing.T) {
+	const (
+		N = 1e6
+		O = 1234
+	)
+
+	var r *RollbackFiler
+	f, g := NewMemFiler(), NewMemFiler()
+
+	checkpoint := func() (err error) {
+		sz, err := r.Size()
+		if err != nil {
+			return
+		}
+
+		return f.Truncate(sz)
+	}
+
+	r, err := NewRollbackFiler(f, checkpoint, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = r.BeginUpdate(); err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(42))
+	b := make([]byte, N)
+	for i := range b {
+		b[i] = byte(rng.Int())
+	}
+
+	if _, err = r.WriteAt(b, O); err != nil {
+		t.Fatal(err)
+	}
+
+	b = filerBytes(f)
+	if n := len(b); n != 0 {
+		t.Fatal(n)
+	}
+
+	if err = r.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	cmpFilerBytes(t, f, g)
+}
+
+func TestRollbackFiler3(t *testing.T) {
+	const (
+		maxSize    = 1e6
+		maxChange  = maxSize/100 + 4
+		maxChanges = 10
+		maxNest    = 10
+	)
+
+	var r *RollbackFiler
+	f := NewMemFiler()
+
+	checkpoint := func() (err error) {
+		sz, err := r.Size()
+		if err != nil {
+			return
+		}
+
+		return f.Truncate(sz)
+	}
+
+	r, err := NewRollbackFiler(f, checkpoint, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(42))
+
+	ref := make([]byte, 2*maxSize)
+	for i := range ref {
+		ref[i] = byte(rng.Int())
+	}
+
+	var finalSize int
+
+	var fn func(int, int, []byte) (int, []byte)
+	fn = func(nest, inSize int, in []byte) (outSize int, out []byte) {
+		defer func() {
+			for i := outSize; i < len(out); i++ {
+				out[i] = 0
+			}
+			finalSize = mathutil.Max(finalSize, outSize)
+		}()
+
+		out = make([]byte, len(in), 2*maxSize)
+		copy(out, in)
+		if err := r.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		for i := 0; i < maxChanges; i++ {
+			changeLen := rng.Intn(maxChange) + 4
+			changeOff := rng.Intn(maxSize * 3 / 2)
+			b := make([]byte, changeLen)
+			for i := range b {
+				b[i] = byte(rng.Int())
+			}
+			if n, err := r.WriteAt(b, int64(changeOff)); n != len(b) || err != nil {
+				t.Fatal(n, len(b), err)
+			}
+		}
+
+		if err := r.Rollback(); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := r.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		for i := 0; i < maxChanges; i++ {
+			changeLen := rng.Intn(maxChange) + 4
+			changeOff := rng.Intn(maxSize * 3 / 2)
+			b := make([]byte, changeLen)
+			for i := range b {
+				b[i] = byte(rng.Int())
+			}
+			if n, err := r.WriteAt(b, int64(changeOff)); n != len(b) || err != nil {
+				t.Fatal(n, len(b), err)
+			}
+			copy(out[changeOff:], b)
+			copy(ref[changeOff:], b)
+		}
+
+		newSize := rng.Intn(maxSize*3/2) + 4
+		if nest == maxNest {
+			if err := r.EndUpdate(); err != nil {
+				t.Fatal(err)
+			}
+
+			return newSize, out
+		}
+
+		outSize, out = fn(nest+1, newSize, out)
+		if err := r.EndUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		return
+	}
+
+	sz, result := fn(0, maxSize, ref)
+	if g, e := sz, finalSize; g != e {
+		t.Fatal(err)
+	}
+
+	g, e := result[:sz], ref[:sz]
+	if !bytes.Equal(g, e) {
+		if len(g) == len(e) {
+			x := make([]byte, len(g))
+			for i := range x {
+				if g[i] != e[i] {
+					x[i] = 'X'
+				}
+			}
+			//t.Logf("Data diff\n%s", hex.Dump(x))
+		}
+		//t.Fatalf("Data don't match: got\n%sexp:\n%s", hex.Dump(g), hex.Dump(e))
+		t.Fatalf("Data don't match")
+	}
 }
