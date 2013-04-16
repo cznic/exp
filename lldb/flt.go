@@ -8,13 +8,15 @@ import (
 	"sort"
 )
 
+//TODO(jnml) Low-hanging-fruit: un-caching flt.head, degraded performance of DBM by -50%. .
+
 // A FLTSlot represents a Head of one of the doubly linked lists of free blocks
 // with sizes in atoms >= MinSize.
 //
 // A FLTSlot implementation SHOULD NOT cache the Head values in memory, but
-// always read write them to the underlying Filer (the typical case). The
+// always readwrite them from/to the underlying Filer (the typical case). The
 // rationale is: failing to do so, in case of Filers with structural
-// transaction support effectively means a DB is corrupted on the first
+// transaction support, effectively means a DB gets corrupted on the first
 // Rollback.
 type FLTSlot interface {
 	// MinSize returns the minimal size of the free blocks in the list

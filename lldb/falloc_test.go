@@ -1057,7 +1057,7 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := r.BeginUpdate(); err != nil {
+		if err := r.BeginUpdate(); err != nil { // BeginUpdate 0->1
 			t.Fatal(err)
 		}
 
@@ -1075,6 +1075,8 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(h)
 		}
 
+		// | 1 |
+
 		h, err = a.Alloc(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -1084,6 +1086,7 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(h)
 		}
 
+		// | 1 | 2 |
 		h, err = a.Alloc(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -1093,11 +1096,13 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(h)
 		}
 
+		// | 1 | 2 | 3 |
 		if err = a.Free(2); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := r.BeginUpdate(); err != nil {
+		// | 1 | free | 3 |
+		if err := r.BeginUpdate(); err != nil { // BeginUpdate 1->2
 			t.Fatal(err)
 		}
 
@@ -1110,10 +1115,12 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(h)
 		}
 
-		if err := r.Rollback(); err != nil {
+		// | 1 | 2 | 3 |
+		if err := r.Rollback(); err != nil { // Rollback 2->1
 			t.Fatal(err)
 		}
 
+		// | 1 | free | 3 |
 		h, err = a.Alloc(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -1123,6 +1130,7 @@ func TestRollbackAllocator(t *testing.T) {
 			t.Fatal(h)
 		}
 
+		// | 1 | 2 | 3 |
 		if err := a.Verify(NewMemFiler(), nil, nil); err != nil {
 			t.Fatal(err)
 		}
