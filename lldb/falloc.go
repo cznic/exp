@@ -429,7 +429,10 @@ func (a *Allocator) free2(h, atoms int64) (err error) {
 
 // Add a free block h to the appropriate free list
 func (a *Allocator) link(h, atoms int64) (err error) {
-	next := a.flt.head(atoms)
+	next, err := a.flt.head(atoms)
+	if err != nil {
+		return
+	}
 
 	if err = a.makeFree(h, atoms, 0, next); err != nil {
 		return
@@ -1361,7 +1364,12 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 	}
 
 	for _, list := range rep {
-		for prev, next = 0, list.Head(); next != 0; prev, next = next, fnext {
+		prev = 0
+		if next, err = list.Head(); err != nil {
+			return
+		}
+
+		for ; next != 0; prev, next = next, fnext {
 			if wasOn, err = bit(false, next); err != nil {
 				return
 			}

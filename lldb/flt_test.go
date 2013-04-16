@@ -115,7 +115,17 @@ func TestNewFLTAllocator(t *testing.T) {
 				t.Fatal(v1, v2)
 			}
 
-			if g, e := v1.Head(), v2.Head(); g != e {
+			g, err := v1.Head()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			e, err := v2.Head()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g != e {
 				t.Fatal(v1, v2)
 			}
 		}
@@ -129,7 +139,7 @@ type testFLTSlot struct {
 }
 
 func (s *testFLTSlot) MinSize() int64        { return s.minsize }
-func (s *testFLTSlot) Head() int64           { return s.head }
+func (s *testFLTSlot) Head() (int64, error)  { return s.head, nil }
 func (s *testFLTSlot) SetHead(a int64) error { s.head = a; return nil }
 
 type testFLT []FLTSlot

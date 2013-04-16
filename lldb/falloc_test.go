@@ -205,7 +205,13 @@ func dump(a *pAllocator, t *testing.T) {
 
 	t.Log("Last known good FLT")
 	for _, slot := range a.lastKnownGoodFLT {
-		if h := slot.Head(); h != 0 {
+		h, err := slot.Head()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if h != 0 {
 			t.Logf("min %d head %#x off %#x", slot.MinSize(), h, h2off(h))
 		}
 	}
@@ -218,7 +224,13 @@ func dump(a *pAllocator, t *testing.T) {
 	}
 
 	for _, slot := range r {
-		if h := slot.Head(); h != 0 {
+		h, err := slot.Head()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if h != 0 {
 			t.Logf("min %d head %#x off %#x", slot.MinSize(), h, h2off(h))
 		}
 	}
@@ -441,7 +453,12 @@ func TestVerify1(t *testing.T) {
 func repDump(a []FLTSlot) string {
 	b := []string{}
 	for _, v := range a {
-		if h := v.Head(); h != 0 {
+		h, err := v.Head()
+		if err != nil {
+			panic(err)
+		}
+
+		if h != 0 {
 			b = append(b, fmt.Sprintf("min:%d, h:%d", v.MinSize(), h))
 		}
 	}
@@ -1018,5 +1035,97 @@ func TestAllocatorRnd(t *testing.T) {
 			}
 
 		}
+	}
+}
+
+func TestRollbackAllocator(t *testing.T) {
+	for kind := 0; kind < fltInvalidKind; kind++ {
+		f := NewMemFiler()
+		var r *RollbackFiler
+		r, err := NewRollbackFiler(f,
+			func() (err error) {
+				sz, err := r.Size()
+				if err != nil {
+					return
+				}
+
+				return f.Truncate(sz)
+			},
+			f,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := r.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		a, err := NewFLTAllocator(r, kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		h, err := a.Alloc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if h != 1 {
+			t.Fatal(h)
+		}
+
+		h, err = a.Alloc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if h != 2 {
+			t.Fatal(h)
+		}
+
+		h, err = a.Alloc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if h != 3 {
+			t.Fatal(h)
+		}
+
+		if err = a.Free(2); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := r.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		h, err = a.Alloc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if h != 2 {
+			t.Fatal(h)
+		}
+
+		if err := r.Rollback(); err != nil {
+			t.Fatal(err)
+		}
+
+		h, err = a.Alloc(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if h != 2 {
+			t.Fatal(h)
+		}
+
+		if err := a.Verify(NewMemFiler(), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+
 	}
 }

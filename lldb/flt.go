@@ -8,12 +8,14 @@ import (
 	"sort"
 )
 
-//TODO(later) there's no possibility to implement rollback for FLTs!
-//	Solution: Wrap a filler, hook on the rollback with the new FLT?
-//	2: Add transactional methods to Allocator.
-
 // A FLTSlot represents a Head of one of the doubly linked lists of free blocks
 // with sizes in atoms >= MinSize.
+//
+// A FLTSlot implementation SHOULD NOT cache the Head values in memory, but
+// always read write them to the underlying Filer (the typical case). The
+// rationale is: failing to do so, in case of Filers with structural
+// transaction support effectively means a DB is corrupted on the first
+// Rollback.
 type FLTSlot interface {
 	// MinSize returns the minimal size of the free blocks in the list
 	// starting at Head.
@@ -21,7 +23,7 @@ type FLTSlot interface {
 
 	// Head returns the start (atom address) of the list with free blocks
 	// of size >= MinSize.
-	Head() int64
+	Head() (int64, error)
 
 	// SetHead sets the value of the start of the list. The old value of
 	// the head is discarded and replaced by the new value. If the related
@@ -65,14 +67,21 @@ const (
 type fltSlot struct {
 	filer   Filer
 	minSize int64
-	head    int64
 	off     int64
 }
 
 func (f *fltSlot) MinSize() int64 { return f.minSize }
-func (f *fltSlot) Head() int64    { return f.head }
+
+func (f *fltSlot) Head() (h int64, err error) {
+	var b7 [7]byte
+	if n, err := f.filer.ReadAt(b7[:], f.off); n != 7 {
+		return 0, err
+	}
+
+	return b2h(b7[:]), nil
+}
+
 func (f *fltSlot) SetHead(h int64) error {
-	f.head = h
 	var b7 [7]byte
 	if n, err := f.filer.WriteAt(h2b(b7[:], h), f.off); n != 7 {
 		return err
@@ -154,8 +163,15 @@ func newCannedFLT(f Filer, kind int) (ft *flt, err error) {
 		if n, err := f.ReadAt(b, 0); n != len(b) {
 			return nil, err
 		}
-		for i := range ft.slots {
-			ft.slots[i].(*fltSlot).head = b2h(b[7*i:])
+		for i, v := range ft.slots {
+			h, err := v.Head()
+			if err != nil {
+				return nil, err
+			}
+
+			if h < 0 {
+				return nil, &ErrILSEQ{Type: ErrFLTLoad, Off: 7 * int64(i), Arg: h}
+			}
 		}
 	default:
 		return nil, &ErrILSEQ{Type: ErrFLTLoad, Off: sz, Arg: ft.size}
@@ -228,7 +244,11 @@ func newFlt(f FLT) (t *flt, err error) {
 		}
 
 		minSizes[sz] = true
-		h := slot.Head()
+		h, err := slot.Head()
+		if err != nil {
+			return nil, err
+		}
+
 		if h < 0 {
 			return nil, &ErrINVAL{"Invalid free list table head value:", h}
 		}
@@ -287,7 +307,11 @@ func (f *flt) find(needAtoms int64) (h int64, err error) {
 		ix = f.get[needAtoms]
 	}
 	for _, slot := range f.slots[ix:] {
-		if h = slot.Head(); h != 0 {
+		if h, err = slot.Head(); err != nil {
+			return
+		}
+
+		if h != 0 {
 			err = slot.SetHead(0)
 			return
 		}
@@ -296,7 +320,7 @@ func (f *flt) find(needAtoms int64) (h int64, err error) {
 	return 0, nil
 }
 
-func (f *flt) head(atoms int64) int64 {
+func (f *flt) head(atoms int64) (h int64, err error) {
 	var ix int16
 
 	switch {
