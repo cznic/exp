@@ -45,7 +45,7 @@ type FLTSlot interface {
 // "leak" (see Allocator documentation) field may be discarded by hole
 // punching.
 //
-// Some ready to use types implementing FLT are provided by (TODO).
+// Some ready to use types implementing FLT are provided by NewFLTAllocator.
 type FLT interface {
 	// Report non-destructively reports a list of handles of heads of free
 	// block lists belonging to buckets of size >= MinSize. The list items

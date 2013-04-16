@@ -6,7 +6,49 @@
 
 package lldb
 
-//TODO+ TransactionalMemoryFiler
+//DONE+ TransactionalMemoryFiler
+//	----
+//	Use NewRollbackFiler(myMemFiler, ...)
+
+/*
+
+bfBits: 3
+BenchmarkRollbackFiler	20000000	       102 ns/op	   9.73 MB/s
+
+bfBits: 4
+BenchmarkRollbackFiler	50000000	        55.7 ns/op	  17.95 MB/s
+
+bfBits: 5
+BenchmarkRollbackFiler	100000000	        32.2 ns/op	  31.06 MB/s
+
+bfBits: 6
+BenchmarkRollbackFiler	100000000	        20.6 ns/op	  48.46 MB/s
+
+bfBits: 7
+BenchmarkRollbackFiler	100000000	        15.1 ns/op	  66.12 MB/s
+
+bfBits: 8
+BenchmarkRollbackFiler	100000000	        10.5 ns/op	  95.66 MB/s
+
+bfBits: 9
+BenchmarkRollbackFiler	200000000	         8.02 ns/op	 124.74 MB/s
+
+bfBits: 10
+BenchmarkRollbackFiler	200000000	         9.25 ns/op	 108.09 MB/s
+
+bfBits: 11
+BenchmarkRollbackFiler	100000000	        11.7 ns/op	  85.47 MB/s
+
+bfBits: 12
+BenchmarkRollbackFiler	100000000	        17.2 ns/op	  57.99 MB/s
+
+bfBits: 13
+BenchmarkRollbackFiler	100000000	        32.7 ns/op	  30.58 MB/s
+
+bfBits: 14
+BenchmarkRollbackFiler	50000000	        39.6 ns/op	  25.27 MB/s
+
+*/
 
 import (
 	"fmt"
@@ -15,10 +57,13 @@ import (
 	"github.com/cznic/mathutil"
 )
 
-var _ Filer = &bitFiler{} // Ensure bitFiler is a Filer.
+var (
+	_ Filer = &bitFiler{}      // Ensure bitFiler is a Filer.
+	_ Filer = &RollbackFiler{} // dtto
+)
 
 const (
-	bfBits = 11 //TODO benchmark tune
+	bfBits = 9
 	bfSize = 1 << bfBits
 	bfMask = bfSize - 1
 )
@@ -277,14 +322,13 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 // During an open transaction, all reads (using ReadAt) are "dirty" reads,
 // seeing the uncommitted changes made to the Filer's data.
 //
-// Lldb databases should be based upon a RollbackFiler. FileFiler (TODO) is a
-// ready made RollbackFiler backed by an os.File.
+// Lldb databases should be based upon a RollbackFiler.
 //
-// With a wrapped MemFiler one gets transactional memory (TODO). With, for
-// example a wrapped disk based SimpleFileFiler it protects against at least
-// some HW errors - if Rollback is properly invoked on such failures and/or if
-// there's some WAL or 2PC or whatever other safe mechanism based recovery
-// procedure used by the lldb client.
+// With a wrapped MemFiler one gets transactional memory. With, for example a
+// wrapped disk based SimpleFileFiler it protects against at least some HW
+// errors - if Rollback is properly invoked on such failures and/or if there's
+// some WAL or 2PC or whatever other safe mechanism based recovery procedure
+// used by the lldb client.
 //
 // The "real" writes to the wrapped Filer go through the writerAt supplied to
 // NewRollbackFiler.
