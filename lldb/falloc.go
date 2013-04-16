@@ -241,7 +241,7 @@ func NewAllocator(f Filer, flt FLT) (*Allocator, error) {
 // Alloc allocates storage space for b and returns the handle of the new block
 // with content set to b or an error, if any. The returned handle is valid only
 // while the block is used - until the block is deallocated. No two valid
-// handles share the same value within the same Filer, but the any value of a
+// handles share the same value within the same Filer, but any value of a
 // handle not referring to any used block may become valid any time as a result
 // of Alloc.
 //
