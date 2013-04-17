@@ -174,7 +174,7 @@ func (db *DB) close() (err error) {
 		return
 	}
 
-	err = db.f.Sync()
+	err = db.filer.Sync()
 	if err2 := db.filer.Close(); err2 != nil && err == nil {
 		err = err2
 	}
@@ -585,13 +585,10 @@ func (db *DB) leave() {
 // Sync commits the current contents of the DB file to stable storage.
 // Typically, this means flushing the file system's in-memory copy of recently
 // written data to disk.
-func (db *DB) Sync() (err error) {
-	if db.f != nil {
-		db.enter()
-		defer db.leave()
-		err = db.f.Sync()
-	}
-	return
+func (db *DB) Sync() error {
+	db.enter()
+	defer db.leave()
+	return db.filer.Sync()
 }
 
 // File returns a File associated with name.
