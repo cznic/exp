@@ -10,6 +10,7 @@ package lldb
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 )
@@ -215,7 +216,7 @@ func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error
 func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 	fi, err := a.wal.Stat()
 	if err != nil {
-		return &ErrILSEQ{More: a.wal.Name()}
+		return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 	}
 
 	if fi.Size()%16 != 0 {
@@ -229,7 +230,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 	}
 
 	if len(items) != 3 || items[0] != wpt00Header || items[1] != walTypeACIDFiler0 {
-		return &ErrILSEQ{More: a.wal.Name()}
+		return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 	}
 
 	tr := NewBTree(nil)
@@ -241,13 +242,13 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		}
 
 		if len(items) < 2 {
-			return &ErrILSEQ{More: a.wal.Name()}
+			return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 		}
 
 		switch items[0] {
 		case wpt00WriteData:
 			if len(items) != 3 {
-				return &ErrILSEQ{More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 			}
 
 			b, off := items[1].([]byte), items[2].(int64)
@@ -259,11 +260,11 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		case wpt00Checkpoint:
 			var b1 [1]byte
 			if n, err := f.Read(b1[:]); n != 0 || err == nil {
-				return &ErrILSEQ{More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 			}
 
 			if len(items) != 2 {
-				return &ErrILSEQ{More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 			}
 
 			sz := items[1].(int64)
@@ -312,7 +313,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 
 			return a.wal.Sync()
 		default:
-			return &ErrILSEQ{More: a.wal.Name()}
+			return &ErrILSEQ{Type: ErrInvalidWAL, More: fmt.Sprintf("%q: packet tag %v", a.wal.Name(), items[0])}
 		}
 	}
 }

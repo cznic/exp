@@ -17,7 +17,7 @@ import (
 
 var dbg = func(s string, va ...interface{}) {
 	_, fn, fl, _ := runtime.Caller(1)
-	fmt.Printf("%s:%d: ", fn, fl)
+	fmt.Printf("%s:%d: ", path.Base(fn), fl)
 	fmt.Printf(s+"\n", va...)
 }
 
