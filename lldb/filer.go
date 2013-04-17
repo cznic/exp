@@ -72,6 +72,9 @@ type Filer interface {
 	// Analogous to os.File.FileInfo().Size().
 	Size() (int64, error)
 
+	// Analogous to os.Sync().
+	Sync() (err error)
+
 	// Analogous to os.File.Truncate().
 	Truncate(size int64) error
 
@@ -160,6 +163,11 @@ func (f *InnerFiler) Size() (int64, error) {
 	}
 
 	return mathutil.MaxInt64(sz-f.off, 0), nil
+}
+
+// Sync() implements Filer.
+func (f *InnerFiler) Sync() (err error) {
+	return f.outer.Sync()
 }
 
 // Truncate implements Filer.

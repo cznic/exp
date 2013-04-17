@@ -227,6 +227,11 @@ func (f *MemFiler) Size() (int64, error) {
 	return f.size, nil
 }
 
+// Sync implements Filer.
+func (f *MemFiler) Sync() error {
+	return nil
+}
+
 // Truncate implements Filer.
 func (f *MemFiler) Truncate(size int64) (err error) {
 	switch {

@@ -92,6 +92,11 @@ func (f *SimpleFileFiler) Size() (int64, error) {
 	return f.size, nil
 }
 
+// Sync implements Filer.
+func (f *SimpleFileFiler) Sync() error {
+	return f.file.Sync()
+}
+
 // Truncate implements Filer.
 func (f *SimpleFileFiler) Truncate(size int64) (err error) {
 	if size < 0 {

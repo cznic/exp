@@ -106,9 +106,10 @@ func newBitFiler(parent Filer) (f *bitFiler, err error) {
 	return &bitFiler{parent: parent, m: bitFilerMap{}, size: sz}, nil
 }
 
-func (f *bitFiler) BeginUpdate() error     { panic("internal error") }
-func (f *bitFiler) EndUpdate() (err error) { panic("internal error") }
-func (f *bitFiler) Rollback() (err error)  { panic("internal error") }
+func (f *bitFiler) BeginUpdate() error { panic("internal error") }
+func (f *bitFiler) EndUpdate() error   { panic("internal error") }
+func (f *bitFiler) Rollback() error    { panic("internal error") }
+func (f *bitFiler) Sync() error        { panic("internal error") }
 
 func (f *bitFiler) Close() (err error)   { return }
 func (f *bitFiler) Name() string         { return fmt.Sprintf("%p.bitfiler", f) }
@@ -526,6 +527,11 @@ func (r *RollbackFiler) Size() (int64, error) {
 	}
 
 	return r.bitFiler.Size()
+}
+
+// Implements Filer.
+func (r *RollbackFiler) Sync() error {
+	return r.f.Sync()
 }
 
 // Implements Filer.
