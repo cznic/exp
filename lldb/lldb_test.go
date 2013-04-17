@@ -26,6 +26,8 @@ func TODO(s string, args ...interface{}) {
 	log.Fatalf(fmt.Sprintf("[TODO %s.%d]\n", path.Base(f), l)+s, args...)
 }
 
+func use(...interface{}) {}
+
 func TestN2Atoms(t *testing.T) {
 	tab := []struct{ n, a int }{
 		{0, 1},
