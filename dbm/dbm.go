@@ -49,6 +49,7 @@ type DB struct {
 	scache     treeCache       // System arrays cache
 	stop       chan int        // Remove() coordination
 	wg         sync.WaitGroup  // Remove() coordination
+	xact       bool            // Updates within automatic structrual transactions
 }
 
 // Create creates the named DB file mode 0666 (before umask). The file must not
@@ -148,19 +149,23 @@ func Open(name string) (db *DB, err error) {
 //
 // Close is idempotent.
 func (db *DB) Close() (err error) {
-	db.enter()
+	if err = db.enter(); err != nil {
+		return
+	}
 
 	if db.closed {
-		db.leave()
-		return
+		return db.leave(&err)
 	}
 
 	db.closed = true
 	db.closeMu.Lock()
 	defer db.closeMu.Unlock()
 
-	db.leave()
-	return db.close()
+	e := db.leave(&err)
+	if err = db.close(); err == nil {
+		err = e
+	}
+	return
 }
 
 func (db *DB) close() (err error) {
@@ -222,8 +227,11 @@ func (db *DB) root() (r *Array, err error) {
 // Array returns an Array associated with a subtree of array, determined by
 // subscripts.
 func (db *DB) Array(array string, subscripts ...interface{}) (a Array, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	return db.array_(false, array, subscripts...)
 }
@@ -260,8 +268,11 @@ func (db *DB) fileArray(canCreate bool, name string) (f File, err error) {
 // Set sets the value at subscripts in array. Any previous value, if existed,
 // is overwritten by the new one.
 func (db *DB) Set(value interface{}, array string, subscripts ...interface{}) (err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	a, err := db.array_(true, array, subscripts...)
 	if err != nil {
@@ -274,8 +285,11 @@ func (db *DB) Set(value interface{}, array string, subscripts ...interface{}) (e
 // Get returns the value at subscripts in array, or nil if no such value
 // exists.
 func (db *DB) Get(array string, subscripts ...interface{}) (value interface{}, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -289,8 +303,11 @@ func (db *DB) Get(array string, subscripts ...interface{}) (value interface{}, e
 // If from is nil it works as 'from lowest existing key'.  If to is nil it
 // works as 'to highest existing key'.
 func (db *DB) Slice(array string, subscripts, from, to []interface{}) (s *Slice, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -302,8 +319,11 @@ func (db *DB) Slice(array string, subscripts, from, to []interface{}) (s *Slice,
 
 // Delete deletes the value at subscripts in array.
 func (db *DB) Delete(array string, subscripts ...interface{}) (err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -315,16 +335,20 @@ func (db *DB) Delete(array string, subscripts ...interface{}) (err error) {
 
 // Clear empties the subtree at subscripts in array.
 func (db *DB) Clear(array string, subscripts ...interface{}) (err error) {
-	db.enter()
-
-	a, err := db.array_(false, array, subscripts...)
-	if a.tree == nil || err != nil {
-		db.leave()
+	if err = db.enter(); err != nil {
 		return
 	}
 
-	db.leave()
-	return a.Clear()
+	a, err := db.array_(false, array, subscripts...)
+	if a.tree == nil || err != nil {
+		return db.leave(&err)
+	}
+
+	e := db.leave(&err)
+	if err = a.Clear(); err == nil {
+		err = e
+	}
+	return
 }
 
 // Name returns the name of the DB file.
@@ -333,9 +357,12 @@ func (db *DB) Name() string {
 }
 
 // Size returns the size of the DB file.
-func (db *DB) Size() (int64, error) {
-	db.enter()
-	defer db.leave()
+func (db *DB) Size() (sz int64, err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 	return db.filer.Size()
 }
 
@@ -360,16 +387,22 @@ func (db *DB) setRemoving(h int64, flag bool) (r bool) {
 
 // RemoveArray removes array from the DB.
 func (db *DB) RemoveArray(array string) (err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	return db.removeArray(arraysPrefix, array)
 }
 
 // RemoveFile removes file from the DB.
 func (db *DB) RemoveFile(file string) (err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	return db.removeArray(filesPrefix, file)
 }
@@ -503,6 +536,7 @@ func (db *DB) boot() (err error) {
 }
 
 func (db *DB) victor(removes Array, h int64) {
+	var err error
 	var finished bool
 	defer func() {
 		if finished {
@@ -510,20 +544,23 @@ func (db *DB) victor(removes Array, h int64) {
 			lldb.RemoveBTree(db.alloc, h)
 			removes.delete(h)
 			db.setRemoving(h, false)
-			db.leave()
+			db.leave(&err)
 		}
 		db.wg.Done()
 	}()
 
-	db.bkl.Lock()
+	db.enter()
 	t, err := lldb.OpenBTree(db.alloc, collate, h)
 	if err != nil {
-		db.bkl.Unlock()
+		db.leave(&err)
 		finished = true
 		return
 	}
 
-	db.bkl.Unlock()
+	if db.leave(&err) != nil {
+		return
+	}
+
 	for {
 		runtime.Gosched()
 		select {
@@ -536,11 +573,13 @@ func (db *DB) victor(removes Array, h int64) {
 
 		db.enter()
 		if finished, err = t.DeleteAny(); finished || err != nil {
-			db.leave()
+			db.leave(&err)
 			return
 		}
 
-		db.leave()
+		if db.leave(&err) != nil {
+			return
+		}
 	}
 }
 
@@ -548,8 +587,11 @@ func (db *DB) victor(removes Array, h int64) {
 // as its keys. The associated values are meaningless but non-nil if the value
 // exists.
 func (db *DB) Arrays() (a Array, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	p, err := db.root()
 	if err != nil {
@@ -563,8 +605,11 @@ func (db *DB) Arrays() (a Array, err error) {
 // name as its keys. The associated values are meaningless but non-nil if the
 // value exists.
 func (db *DB) Files() (a Array, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	p, err := db.root()
 	if err != nil {
@@ -574,20 +619,37 @@ func (db *DB) Files() (a Array, err error) {
 	return p.array(filesPrefix)
 }
 
-func (db *DB) enter() {
+func (db *DB) enter() (err error) {
 	db.bkl.Lock()
+	if db.xact {
+		err = db.filer.BeginUpdate()
+	}
+	return
 }
 
-func (db *DB) leave() {
+func (db *DB) leave(err *error) error {
 	db.bkl.Unlock()
+	if db.xact {
+		switch {
+		case *err != nil:
+			db.filer.Rollback() // return the original, input error
+		default:
+			*err = db.filer.EndUpdate()
+		}
+	}
+	return *err
 }
 
 // Sync commits the current contents of the DB file to stable storage.
 // Typically, this means flushing the file system's in-memory copy of recently
 // written data to disk.
-func (db *DB) Sync() error {
-	db.enter()
-	defer db.leave()
+func (db *DB) Sync() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
 	return db.filer.Sync()
 }
 
@@ -605,8 +667,11 @@ func (db *DB) File(name string) (f File) {
 // returns the new value. If the value doesn't exists before calling Inc or if
 // the value is not an integer then the value is considered to be zero.
 func (db *DB) Inc(delta int64, array string, subscripts ...interface{}) (val int64, err error) {
-	db.enter()
-	defer db.leave()
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
 
 	a, err := db.array_(true, array, subscripts...)
 	if err != nil {

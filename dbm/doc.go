@@ -13,20 +13,17 @@ speed. Dbm was written for a project running on an embedded ARM Linux system.
 
 Experimental release notes
 
-This is a (very early) experimental release, kind of a Technology Preview.
-There's no journaling or write ahead logging implemented yet, neither any
-recovery mechanism so a program crash or any other non clean shutdown of the DB
-can corrupt it. Don't open a DB from two applications or two instances of an
-application - it will get corrupted (no file locking is implemented). Don't do
-that even when in "read only" mode - it may get corrupted anyway, because
-reading from the DB may actually cause writing to it. Some internal structures
-are rebuilt lazily and there's no option yet for a true read only mode (but
-it's planned).
+This is an experimental release.  Don't open a DB from two applications or two
+instances of an application - it will get corrupted (no file locking is
+implemented). Don't do that even when in "read only" mode - it may get
+corrupted anyway, because reading from the DB may actually cause writing to it.
+Some internal structures are rebuilt lazily and there's no option yet for a
+true read only mode (but it's planned).
 
 Key collating respecting client supplied locale is not yet implemented. Planned
 when exp/locale materializes.
 
-Support for Go 1.0.3 was not tested and is not planned. IOW, you probably must
+Support for Go 1.0.3 was not tested and is not planned. IOW, you must
 use Go tip. Dbm's target is Go 1.1.
 
 No serious attempts to profile and/or improve performance were made.
@@ -37,8 +34,8 @@ No serious attempts to profile and/or improve performance were made.
 
 Targeted use cases
 
-ATM using dbm for some only working data set while not depending on real
-persistence might be safe (modulo any unknown bugs).
+ATM using disk based dbm DBs with 2PC/WAL/recovery enabled is supposed to be
+safe (modulo any unknown bugs).
 
 Concurrent access
 
@@ -48,7 +45,8 @@ seeing a value in a tree and another deleting it before the first one gets back
 to process it, must be handled outside of dbm.  Still any CRUD operations, as
 in this date race example, are atomic and safe per se and will not corrupt the
 database structural integrity.  Non coordinated updates of a DB may corrupt its
-semantic and/or schema integrity, though.
+semantic and/or schema integrity, though. Failed DB updates performed not
+within a structural transaction may corrupt the DB.
 
 Also please note that passing racy arguments to an otherwise concurrent safe
 API makes that API act racy as well.

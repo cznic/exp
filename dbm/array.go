@@ -71,8 +71,11 @@ func (a *Array) validate(canCreate bool) (ok bool, err error) {
 // Array returns an object associated with a subtree of array 'a', determined
 // by subscripts.
 func (a *Array) Array(subscripts ...interface{}) (r Array, err error) {
-	a.db.enter()
-	defer a.db.leave()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer a.db.leave(&err)
 
 	return a.array(subscripts...)
 }
@@ -127,8 +130,11 @@ func (a *Array) bdelete(key []byte) (err error) {
 // Set sets the value at subscripts in subtree 'a'. Any previous value, if
 // existed, is overwritten by the new one.
 func (a *Array) Set(value interface{}, subscripts ...interface{}) (err error) {
-	a.db.enter()
-	defer a.db.leave()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer a.db.leave(&err)
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return &lldb.ErrPERM{Src: "dbm.Array.Set"}
@@ -159,8 +165,11 @@ func (a *Array) set(value interface{}, subscripts ...interface{}) (err error) {
 // new value. If the value doesn't exists before calling Inc or if the value is
 // not an integer then the value is considered to be zero.
 func (a *Array) Inc(delta int64, subscripts ...interface{}) (val int64, err error) {
-	a.db.enter()
-	defer a.db.leave()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer a.db.leave(&err)
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return 0, &lldb.ErrPERM{Src: "dbm.Array.Inc"}
@@ -185,8 +194,11 @@ func (a *Array) inc(delta int64, subscripts ...interface{}) (val int64, err erro
 // Get returns the value at subscripts in subtree 'a', or nil if no such value
 // exists.
 func (a *Array) Get(subscripts ...interface{}) (value interface{}, err error) {
-	a.db.enter()
-	defer a.db.leave()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer a.db.leave(&err)
 
 	if ok, e := a.validate(false); !ok || err != nil {
 		err = e
@@ -233,8 +245,11 @@ func (a *Array) get(subscripts ...interface{}) (value interface{}, err error) {
 
 // Delete deletes the value at subscripts in array.
 func (a *Array) Delete(subscripts ...interface{}) (err error) {
-	a.db.enter()
-	defer a.db.leave()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer a.db.leave(&err)
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return &lldb.ErrPERM{Src: "dbm.Array.Delete"}
@@ -260,18 +275,29 @@ func (a *Array) delete(subscripts ...interface{}) (err error) {
 func (a *Array) Clear(subscripts ...interface{}) (err error) {
 	//TODO optimize for clear "everything"
 
-	a.db.enter()
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
-		a.db.leave()
+		if a.db.leave(&err) != nil {
+			return
+		}
+
 		return &lldb.ErrPERM{Src: "dbm.Array.Clear"}
 	}
 
 	if ok, err := a.validate(false); !ok {
-		a.db.leave()
+		if a.db.leave(&err) != nil {
+			return err
+		}
+
 		return err
 	}
 
-	a.db.leave()
+	if a.db.leave(&err) != nil {
+		return
+	}
 
 	a0 := *a
 	a0.prefix = nil

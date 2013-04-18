@@ -122,8 +122,11 @@ func (f *File) Name() string {
 
 // As os.File.FileInfo().Size().
 func (f *File) Size() (sz int64, err error) {
-	f.db.enter()
-	defer f.db.leave()
+	if err = f.db.enter(); err != nil {
+		return
+	}
+
+	defer f.db.leave(&err)
 
 	if ok, err := (*Array)(f).validate(false); !ok {
 		return 0, err
@@ -292,19 +295,30 @@ func (f *File) writeAt(b []byte, off int64, bits bool) (n int, err error) {
 
 // As os.File.Truncate().
 func (f *File) Truncate(size int64) (err error) {
-	f.db.enter()
+	if err = f.db.enter(); err != nil {
+		return
+	}
 
 	a := (*Array)(f)
 	switch {
 	case size < 0:
-		f.db.leave()
+		if f.db.leave(&err); err != nil {
+			return
+		}
+
 		return &lldb.ErrINVAL{Src: "dbm.File.Truncate size", Val: size}
 	case size == 0:
-		f.db.leave()
+		if f.db.leave(&err); err != nil {
+			return
+		}
+
 		return a.Clear()
 	}
 
-	f.db.leave()
+	if f.db.leave(&err) != nil {
+		return
+	}
+
 	first := size >> pgBits
 	if size&pgMask != 0 {
 		first++

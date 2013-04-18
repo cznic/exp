@@ -26,13 +26,12 @@ type Slice struct {
 // longer exist - if some other goroutine introduces such data race.
 // Coordination required to avoid this situation, if applicable/desirable, must
 // be provided by the client of dbm.
-func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error {
+func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err error) {
 	var (
 		enum      *lldb.BTreeEnumerator
 		bk, bv    []byte
 		k, v      []interface{}
 		hit, more bool
-		err       error
 		skip      = len(s.prefix)
 		db        = s.a.db
 		noVal     bool
@@ -52,34 +51,43 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 
 	switch {
 	case s.from == nil && s.to == nil:
-		db.enter()
+		if err = db.enter(); err != nil {
+			return
+		}
+
 		if enum, _, err = s.a.tree.Seek(bprefix); err != nil {
-			db.leave()
-			return noEof(err)
+			err = noEof(err)
+			return db.leave(&err)
 		}
 
 		for {
 			if bk, bv, err = enum.Current(); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
-				db.leave()
+				if db.leave(&err) != nil {
+					return
+				}
+
 				return nil
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if v, err = lldb.DecodeScalars(bv); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
-			db.leave()
+			if db.leave(&err) != nil {
+				return
+			}
+
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
@@ -87,48 +95,56 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			db.enter()
+			if err = db.enter(); err != nil {
+				return
+			}
+
 			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if hit {
 				if err = enum.Next(); err != nil {
-					db.leave()
-					return noEof(err)
+					err = noEof(err)
+					return db.leave(&err)
 				}
 			}
 		}
 	case s.from == nil && s.to != nil:
-		db.enter()
+		if err = db.enter(); err != nil {
+			return
+		}
+
 		if enum, _, err = s.a.tree.Seek(from); err != nil {
-			db.leave()
-			return noEof(err)
+			err = noEof(err)
+			return db.leave(&err)
 		}
 
 		for {
 			if bk, bv, err = enum.Current(); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if collate(bk, to) > 0 {
-				db.leave()
-				return nil
+				return db.leave(&err)
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if v, err = lldb.DecodeScalars(bv); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
-			db.leave()
+			if db.leave(&err) != nil {
+				return
+			}
+
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
@@ -136,48 +152,57 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			db.enter()
+			if err = db.enter(); err != nil {
+				return
+			}
+
 			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if hit {
 				if err = enum.Next(); err != nil {
-					db.leave()
-					return noEof(err)
+					err = noEof(err)
+					return db.leave(&err)
 				}
 			}
 		}
 	case s.from != nil && s.to == nil:
-		db.enter()
+		if err = db.enter(); err != nil {
+			return
+		}
+
 		if enum, _, err = s.a.tree.Seek(from); err != nil {
-			db.leave()
-			return noEof(err)
+			err = noEof(err)
+			return db.leave(&err)
 		}
 
 		for {
 			if bk, bv, err = enum.Current(); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
-				db.leave()
-				return nil
+				err = nil
+				return db.leave(&err)
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if v, err = lldb.DecodeScalars(bv); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
-			db.leave()
+			if db.leave(&err) != nil {
+				return
+			}
+
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
@@ -185,48 +210,57 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			db.enter()
+			if err = db.enter(); err != nil {
+				return
+			}
+
 			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if hit {
 				if err = enum.Next(); err != nil {
-					db.leave()
-					return noEof(err)
+					err = noEof(err)
+					return db.leave(&err)
 				}
 			}
 		}
 	case s.from != nil && s.to != nil:
-		db.enter()
+		if err = db.enter(); err != nil {
+			return
+		}
+
 		if enum, _, err = s.a.tree.Seek(from); err != nil {
-			db.leave()
-			return noEof(err)
+			err = noEof(err)
+			return db.leave(&err)
 		}
 
 		for {
 			if bk, bv, err = enum.Current(); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if collate(bk, to) > 0 {
-				db.leave()
-				return nil
+				err = nil
+				return db.leave(&err)
 			}
 
 			if k, err = lldb.DecodeScalars(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if v, err = lldb.DecodeScalars(bv); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
-			db.leave()
+			if db.leave(&err) != nil {
+				return
+			}
+
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
@@ -234,16 +268,19 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) error 
 				return noEof(err)
 			}
 
-			db.enter()
+			if err = db.enter(); err != nil {
+				return
+			}
+
 			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				db.leave()
-				return noEof(err)
+				err = noEof(err)
+				return db.leave(&err)
 			}
 
 			if hit {
 				if err = enum.Next(); err != nil {
-					db.leave()
-					return noEof(err)
+					err = noEof(err)
+					return db.leave(&err)
 				}
 			}
 		}
