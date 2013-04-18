@@ -363,6 +363,7 @@ type RollbackFiler struct {
 	parent     Filer
 	tlevel     int // transaction nesting level, 0 == not in transaction
 	writerAt   io.WriterAt
+	fakeSize   int64
 }
 
 // NewRollbackFiler returns a RollbackFiler wrapping f.
@@ -370,12 +371,12 @@ type RollbackFiler struct {
 // The checkpoint parameter
 //
 // The checkpoint function is called after closing (by EndUpdate) the upper
-// most level open transaction if all calls of writerAt were sucessfull and the
-// DB is thus now in a consistent state (virtually, in the ideal world with no
-// write caches, no HW failures, no process crashes, ...).
+// most level open transaction if all calls of writerAt were successful and the
+// DB (or eg. a WAL) is thus now in a consistent state (virtually, in the ideal
+// world with no write caches, no HW failures, no process crashes, ...).
 //
 // NOTE: In, for example, a 2PC it is necessary to reflect also the Size at the
-// time of the checkpoint. All changes were successfully writen already by
+// time of the checkpoint. All changes were successfully written already by
 // writerAt before invoking checkpoint.
 //
 // The writerAt parameter
@@ -406,6 +407,7 @@ func NewRollbackFiler(f Filer, checkpoint func() error, writerAt io.WriterAt) (r
 		checkpoint: checkpoint,
 		f:          f,
 		writerAt:   writerAt,
+		fakeSize:   -1,
 	}, nil
 }
 
@@ -452,8 +454,14 @@ func (r *RollbackFiler) Close() (err error) {
 
 // Implements Filer.
 func (r *RollbackFiler) EndUpdate() (err error) {
+
 	if r.tlevel == 0 {
 		return &ErrPERM{r.f.Name() + " : EndUpdate outside of a transaction"}
+	}
+
+	sz, err := r.Size()
+	if err != nil {
+		return
 	}
 
 	r.tlevel--
@@ -470,6 +478,7 @@ func (r *RollbackFiler) EndUpdate() (err error) {
 	switch {
 	case r.tlevel == 0:
 		r.bitFiler = nil
+		r.fakeSize = sz
 		return r.checkpoint()
 	default:
 		r.bitFiler = parent.(*bitFiler)
@@ -521,7 +530,12 @@ func (r *RollbackFiler) Rollback() (err error) {
 }
 
 // Implements Filer.
-func (r *RollbackFiler) Size() (int64, error) {
+func (r *RollbackFiler) Size() (sz int64, err error) {
+	if sz = r.fakeSize; sz >= 0 {
+		r.fakeSize = -1
+		return
+	}
+
 	if r.tlevel == 0 {
 		return r.f.Size()
 	}

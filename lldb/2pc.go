@@ -6,7 +6,6 @@
 
 package lldb
 
-/*
 import (
 	"bufio"
 	"encoding/binary"
@@ -38,7 +37,7 @@ func (a *acidWriter0) WriteAt(b []byte, off int64) (n int, err error) {
 
 	var key [8]byte
 	binary.BigEndian.PutUint64(key[:], uint64(off))
-	return len(b), f.data.Set(key[:], b) //DONE verify memory BTree can handle more than maxRq
+	return len(b), f.data.Set(key[:], b) //DONE: verify memory BTree can handle more than maxRq
 }
 
 func (a *acidWriter0) writePacket(items []interface{}) (err error) {
@@ -77,14 +76,16 @@ const (
 )
 
 // ACIDFiler0 is a very simple, synchronous implementation of 2PC. It uses a
-// single write ahead log file to provide (some of the) the structural ACID
-// properties.
+// single write ahead log file to provide the structural atomicity
+// (BeginUpdate/EndUpdate/Rollback) and durability (DB can be recovered from
+// WAL if a crash occurred).
 type ACIDFiler0 struct {
 	*RollbackFiler
-	db   Filer
-	wal  *os.File
-	bwal *bufio.Writer
-	data *BTree
+	db       Filer
+	wal      *os.File
+	bwal     *bufio.Writer
+	data     *BTree
+	testHook bool // keeps WAL untruncated (once)
 }
 
 // NewACIDFiler0 returns a  newly created ACIDFiler0 with WAL in wal.
@@ -92,18 +93,18 @@ type ACIDFiler0 struct {
 // If the WAL if zero sized then a previous clean shutdown of db is taken for
 // granted and no recovery procedure is taken.
 //
-// If the WAL is of non zero size then it is checked for having any
-// commited/fully finished transactions not yet been reflected in db. If such
-// transactions exists they're committed to db. If the recovery process
-// finishes successfully, the WAL is truncated to zero size and fsync'ed prior
-// to return from NewACIDFiler0.
-func NewACIDFiler(db Filer, wal *os.File) (f *ACIDFiler0, err error) {
+// If the WAL is of non zero size then it is checked for having a
+// commited/fully finished transaction not yet been reflected in db. If such
+// transaction exists it's committed to db. If the recovery process finishes
+// successfully, the WAL is truncated to zero size and fsync'ed prior to return
+// from NewACIDFiler0.
+func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 	fi, err := wal.Stat()
 	if err != nil {
 		return
 	}
 
-	r := &ACIDFiler0{
+	r = &ACIDFiler0{
 		wal:  wal,
 		data: NewBTree(nil),
 	}
@@ -156,8 +157,7 @@ func NewACIDFiler(db Filer, wal *os.File) (f *ACIDFiler0, err error) {
 					return err
 				}
 
-				off := b2h(k)
-				if _, err := db.WriteAt(v, off); err != nil {
+				if _, err := db.WriteAt(v, int64(binary.BigEndian.Uint64(k))); err != nil {
 					return err
 				}
 
@@ -180,10 +180,13 @@ func NewACIDFiler(db Filer, wal *os.File) (f *ACIDFiler0, err error) {
 
 			// Phase 2 commit complete
 
-			if err = r.wal.Truncate(0); err != nil {
-				return
+			if !r.testHook {
+				if err = r.wal.Truncate(0); err != nil {
+					return
+				}
 			}
 
+			r.testHook = false
 			return r.wal.Sync()
 
 		},
@@ -197,7 +200,7 @@ func NewACIDFiler(db Filer, wal *os.File) (f *ACIDFiler0, err error) {
 
 func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error) {
 	var b4 [4]byte
-	n, err := f.Read(b4[:])
+	n, err := io.ReadAtLeast(f, b4[:], 4)
 	if n != 4 {
 		return
 	}
@@ -206,7 +209,7 @@ func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error
 	m := (4 + ln) % 16
 	padd := (16 - m) % 16
 	b := make([]byte, ln+padd)
-	if n, err = f.Read(b); n != ln+padd {
+	if n, err = io.ReadAtLeast(f, b, len(b)); n != len(b) {
 		return
 	}
 
@@ -229,7 +232,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		return
 	}
 
-	if len(items) != 3 || items[0] != wpt00Header || items[1] != walTypeACIDFiler0 {
+	if len(items) != 3 || items[0] != int64(wpt00Header) || items[1] != int64(walTypeACIDFiler0) {
 		return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 	}
 
@@ -246,7 +249,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		}
 
 		switch items[0] {
-		case wpt00WriteData:
+		case int64(wpt00WriteData):
 			if len(items) != 3 {
 				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
 			}
@@ -257,7 +260,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 			if err = tr.Set(key[:], b); err != nil {
 				return
 			}
-		case wpt00Checkpoint:
+		case int64(wpt00Checkpoint):
 			var b1 [1]byte
 			if n, err := f.Read(b1[:]); n != 0 || err == nil {
 				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
@@ -283,8 +286,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 					return err
 				}
 
-				off := b2h(k)
-				if _, err = db.WriteAt(v, off); err != nil {
+				if _, err = db.WriteAt(v, int64(binary.BigEndian.Uint64(k))); err != nil {
 					return err
 				}
 
@@ -317,4 +319,3 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		}
 	}
 }
-*/

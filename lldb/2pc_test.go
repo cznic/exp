@@ -6,7 +6,6 @@
 
 package lldb
 
-/*
 import (
 	"bytes"
 	"encoding/binary"
@@ -95,9 +94,11 @@ func TestACID0MemBTreeCaps(t *testing.T) {
 }
 
 func TestACIDFiler0(t *testing.T) {
-	const SZ = 1e3 //TODO 1e6 ?
+	const SZ = 1 << 17
 
-	wal, err := ioutil.TempFile("", "test-acidfiler0-wal")
+	// Phase 1: Create a DB, fill with it with data.
+
+	wal, err := ioutil.TempFile(".", "test-acidfiler0-wal-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,11 +107,12 @@ func TestACIDFiler0(t *testing.T) {
 		defer os.Remove(wal.Name())
 	}
 
-	db, err := ioutil.TempFile("", "test-acidfiler0-db")
+	db, err := ioutil.TempFile(".", "test-acidfiler0-db-")
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	dbName := db.Name()
 	if !*oKeep {
 		defer os.Remove(db.Name())
 	}
@@ -137,8 +139,8 @@ func TestACIDFiler0(t *testing.T) {
 	a.Compress = true
 
 	tr, h, err := CreateBTree(a, nil)
-	if err != nil {
-		t.Error(err)
+	if h != 1 || err != nil {
+		t.Error(h, err)
 		return
 	}
 
@@ -146,7 +148,6 @@ func TestACIDFiler0(t *testing.T) {
 	var key, val [8]byte
 	ref := map[int64]int64{}
 
-	npairs := 0
 	for {
 		sz, err := acidFiler.Size()
 		if err != nil {
@@ -158,7 +159,6 @@ func TestACIDFiler0(t *testing.T) {
 			break
 		}
 
-		dbg("npairs %d, truncFiler.totalWritten %d", npairs, truncFiler.totalWritten)
 		k, v := rng.Int63(), rng.Int63()
 		ref[k] = v
 		binary.BigEndian.PutUint64(key[:], uint64(k))
@@ -167,9 +167,9 @@ func TestACIDFiler0(t *testing.T) {
 			t.Error(err)
 			return
 		}
-
-		npairs++
 	}
+
+	acidFiler.testHook = true // keep WAL
 
 	if err := acidFiler.EndUpdate(); err != nil {
 		t.Error(err)
@@ -181,7 +181,104 @@ func TestACIDFiler0(t *testing.T) {
 		return
 	}
 
-	dbg("npairs %d, truncFiler.totalWritten %d, truncFiler.realWritten %d", npairs, truncFiler.totalWritten, truncFiler.realWritten)
-	_ = h
+	if err := wal.Sync(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if _, err = wal.Seek(0, 0); err != nil {
+		t.Error(err)
+		return
+	}
+
+	// Phase 2: Reopen and verify structure and data.
+	db, err = os.OpenFile(dbName, os.O_RDWR, 0666)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	filer := NewSimpleFileFiler(db)
+	a, err = NewFLTAllocator(filer, FLTPowersOf2)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err = a.Verify(NewMemFiler(), nil, nil); err != nil {
+		t.Error(err)
+		return
+	}
+
+	tr, err = OpenBTree(a, nil, 1)
+	for k, v := range ref {
+		binary.BigEndian.PutUint64(key[:], uint64(k))
+		binary.BigEndian.PutUint64(val[:], uint64(v))
+		b, err := tr.Get(key[:])
+		if err != nil || b == nil || !bytes.Equal(b, val[:]) {
+			t.Error(err, b)
+			return
+		}
+	}
+
+	okImage, err := ioutil.ReadFile(dbName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	// Phase 3: Simulate a crash
+	sz, err := filer.Size()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	sz /= 2
+	if err := db.Truncate(sz); err != nil {
+		t.Error(err)
+		return
+	}
+
+	z := make([]byte, sz/3)
+	n, err := db.WriteAt(z, sz/3)
+	if n != len(z) {
+		t.Error(n, err)
+		return
+	}
+
+	if err := db.Sync(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	// Phase 4: Open the corrupted DB
+	filer = NewSimpleFileFiler(db)
+	acidFiler, err = NewACIDFiler(filer, wal)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err = acidFiler.Sync(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err = acidFiler.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	// Phase 5: Verify DB was recovered.
+	newImage, err := ioutil.ReadFile(dbName)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if !bytes.Equal(okImage, newImage) {
+		t.Error(err)
+		return
+	}
 }
-*/
