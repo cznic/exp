@@ -248,7 +248,7 @@ func (f *bitFiler) link() {
 	}
 }
 
-func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
+func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 	f.link()
 	for pgI, pg := range f.m {
 		if !pg.dirty {
@@ -273,9 +273,10 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 				case !flag && last: // Trailing edge detected
 					n, err := w.WriteAt(pg.data[first:i], off)
 					if n != i-first {
-						return err
+						return 0, err
 					}
 					first = -1
+					nwr++
 				}
 
 				last = flag
@@ -284,8 +285,10 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (err error) {
 				i := bfSize
 				n, err := w.WriteAt(pg.data[first:i], off)
 				if n != i-first {
-					return err
+					return 0, err
 				}
+
+				nwr++
 			}
 
 			pg.dirty = false
@@ -471,13 +474,17 @@ func (r *RollbackFiler) EndUpdate() (err error) {
 	if r.tlevel != 0 {
 		w = parent
 	}
-	if err = bf.dumpDirty(w); err != nil {
+	nwr, err := bf.dumpDirty(w)
+	if err != nil {
 		return
 	}
 
 	switch {
 	case r.tlevel == 0:
 		r.bitFiler = nil
+		if nwr == 0 {
+			return
+		}
 		r.fakeSize = sz
 		return r.checkpoint()
 	default:
