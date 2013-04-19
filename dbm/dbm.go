@@ -49,38 +49,60 @@ type DB struct {
 	scache     treeCache       // System arrays cache
 	stop       chan int        // Remove() coordination
 	wg         sync.WaitGroup  // Remove() coordination
-	xact       bool            // Updates within automatic structrual transactions
+	xact       bool            // Updates are made within automatic structural transactions
 }
 
 // Create creates the named DB file mode 0666 (before umask). The file must not
 // already exist. If successful, methods on the returned DB can be used for
 // I/O; the associated file descriptor has mode os.O_RDWR. If there is an
 // error, it will be of type *os.PathError.
-func Create(name string) (db *DB, err error) {
-	return create(os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666))
-}
-
-func create(f *os.File, e error) (db *DB, err error) {
-	if err = e; err != nil {
+//
+// For the meaning of opts please see documentation of Options.
+func Create(name string, opts *Options) (db *DB, err error) {
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+	if err != nil {
 		return
 	}
 
-	return create2(f, lldb.NewSimpleFileFiler(f))
+	return create(f, lldb.NewSimpleFileFiler(f), opts)
 }
 
-func create2(f *os.File, filer lldb.Filer) (db *DB, err error) {
+func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
+	if err = opts.check(filer.Name(), true); err != nil {
+		return
+	}
+
 	b := [16]byte{0x90, 0xdb, 0xf1, 0x1e, 0x00} // ver 0x00
 	if n, err := filer.WriteAt(b[:], 0); n != 16 {
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}
 
+	if opts.ACID&ACIDDisableWAL == 0 {
+		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
+			return
+		}
+	}
+
 	db = &DB{emptySize: 128, f: f, filer: filer}
 
+	if err = filer.BeginUpdate(); err != nil {
+		return
+	}
+
+	defer func() {
+		if e := filer.EndUpdate(); e != nil {
+			if err == nil {
+				err = e
+			}
+		}
+	}()
+
 	if db.alloc, err = lldb.NewFLTAllocator(lldb.NewInnerFiler(filer, 16), lldb.FLTPowersOf2); err != nil {
-		db, err = nil, &os.PathError{Op: "dbm.Create", Path: filer.Name(), Err: err}
+		return nil, &os.PathError{Op: "dbm.Create", Path: filer.Name(), Err: err}
 	}
 
 	db.alloc.Compress = compress
+	db.xact = opts.ACID&ACIDDisableStructuralTransactions == 0
 
 	return
 }
@@ -88,8 +110,11 @@ func create2(f *os.File, filer lldb.Filer) (db *DB, err error) {
 // CreateMem creates an in-memory DB not backed by a disk file.  Memory DBs are
 // resource limited as they are completely held in memory and are not
 // automatically persisted.
-func CreateMem() (db *DB, err error) {
-	return create2(nil, lldb.NewMemFiler())
+//
+// For the meaning of opts please see documentation of Options.
+func CreateMem(opts *Options) (db *DB, err error) {
+	f := lldb.NewMemFiler()
+	return create(nil, f, opts)
 }
 
 // CreateTemp creates a new temporary DB in the directory dir with a name
@@ -98,20 +123,38 @@ func CreateMem() (db *DB, err error) {
 // calling CreateTemp simultaneously will not choose the same file name for the
 // DB. The caller can use Name() to find the pathname of the DB file. It is the
 // caller's responsibility to remove the file when no longer needed.
-func CreateTemp(dir, prefix string) (db *DB, err error) {
-	return create(ioutil.TempFile(dir, prefix))
+//
+// For the meaning of opts please see documentation of Options.
+func CreateTemp(dir, prefix string, opts *Options) (db *DB, err error) {
+	f, err := ioutil.TempFile(dir, prefix)
+	if err != nil {
+		return
+	}
+
+	return create(f, lldb.NewSimpleFileFiler(f), opts)
 }
 
 // Open opens the named DB file for reading/writing. If successful, methods on
 // the returned DB can be used for I/O; the associated file descriptor has mode
 // os.O_RDWR. If there is an error, it will be of type *os.PathError.
-func Open(name string) (db *DB, err error) {
+//
+// For the meaning of opts please see documentation of Options.
+func Open(name string, opts *Options) (db *DB, err error) {
 	f, err := os.OpenFile(name, os.O_RDWR, 0666)
 	if err != nil {
 		return
 	}
 
-	filer := lldb.NewSimpleFileFiler(f)
+	if err = opts.check(f.Name(), false); err != nil {
+		return
+	}
+
+	filer := lldb.Filer(lldb.NewSimpleFileFiler(f))
+	if opts.ACID&ACIDDisableWAL == 0 {
+		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
+			return
+		}
+	}
 
 	sz, err := filer.Size()
 	if err != nil {
@@ -132,7 +175,7 @@ func Open(name string) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
 
-	db = &DB{f: f, filer: filer}
+	db = &DB{f: f, filer: filer, xact: opts.ACID&ACIDDisableStructuralTransactions == 0}
 	switch h.ver {
 	default:
 		return nil, &os.PathError{Op: "dbm.Open", Path: name, Err: fmt.Errorf("unknown dbm file format version %#x", h.ver)}
@@ -241,7 +284,6 @@ func (db *DB) array_(canCreate bool, array string, subscripts ...interface{}) (a
 	if a, err = a.array(subscripts...); err != nil {
 		return
 	}
-
 	a.tree, err = db.acache.getTree(db, arraysPrefix, array, canCreate, aCacheSize)
 	a.name = array
 	a.namespace = arraysPrefix
@@ -628,7 +670,6 @@ func (db *DB) enter() (err error) {
 }
 
 func (db *DB) leave(err *error) error {
-	db.bkl.Unlock()
 	if db.xact {
 		switch {
 		case *err != nil:
@@ -637,6 +678,7 @@ func (db *DB) leave(err *error) error {
 			*err = db.filer.EndUpdate()
 		}
 	}
+	db.bkl.Unlock()
 	return *err
 }
 
@@ -654,10 +696,16 @@ func (db *DB) Sync() (err error) {
 }
 
 // File returns a File associated with name.
-func (db *DB) File(name string) (f File) {
-	f, err := db.fileArray(false, name)
+func (db *DB) File(name string) (f File, err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	f, err = db.fileArray(false, name)
 	if err != nil {
-		panic("internal error")
+		panic(fmt.Errorf("internal error: \"%v\"", err))
 	}
 
 	return

@@ -4,11 +4,11 @@
 
 package dbm
 
-/*
 import (
 	"crypto/sha1"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 )
 
@@ -81,11 +81,40 @@ const (
 // On creating a new DB the WAL file must not exist. It's not safe to write to
 // a non zero sized WAL file as it may contain unprocessed DB recovery data.
 type Options struct {
-	ACID OptACID
-	WAL  string
+	ACID    OptACID
+	WAL     string
+	wal     *os.File
+	checked bool
 }
 
-func walName(dbname, wal string) (r string) {
+func (o *Options) check(dbname string, new bool) (err error) {
+	if o.checked {
+		return
+	}
+
+	if o.ACID&ACIDDisableStructuralTransactions != 0 {
+		o.ACID |= ACIDDisableWAL
+	}
+
+	if o.ACID&ACIDDisableWAL == 0 {
+		o.WAL = o.walName(dbname, o.WAL)
+		switch new {
+		case true:
+			if o.wal, err = os.OpenFile(o.WAL, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666); err != nil {
+				return
+			}
+		case false:
+			if o.wal, err = os.OpenFile(o.WAL, os.O_RDWR, 0666); err != nil {
+				return
+			}
+		}
+	}
+
+	o.checked = true
+	return
+}
+
+func (o *Options) walName(dbname, wal string) (r string) {
 	if wal != "" {
 		return filepath.Clean(wal)
 	}
@@ -96,4 +125,3 @@ func walName(dbname, wal string) (r string) {
 	io.WriteString(h, base)
 	return filepath.Join(filepath.Dir(dbname), fmt.Sprintf(".%x", h.Sum(nil)))
 }
-*/
