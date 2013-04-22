@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -1050,7 +1051,11 @@ func TestRollbackAllocator(t *testing.T) {
 					return
 				}
 
-				return f.Truncate(sz)
+				if err = f.Truncate(sz); err != nil {
+					return err
+				}
+
+				return f.Sync()
 			},
 			f,
 		)
@@ -1138,3 +1143,660 @@ func TestRollbackAllocator(t *testing.T) {
 
 	}
 }
+
+func benchmarkAllocatorAlloc(b *testing.B, f Filer, sz int) {
+	b.SetBytes(int64(sz))
+
+	if err := f.BeginUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	if err = f.EndUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	v := make([]byte, sz)
+	runtime.GC()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		if h, err := a.Alloc(v); h <= 0 || err != nil {
+			f.EndUpdate()
+			b.Error(h, err)
+			return
+		}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+}
+
+func benchmarkAllocatorAllocMemFiler(b *testing.B, sz int) {
+	f := NewMemFiler()
+	benchmarkAllocatorAlloc(b, f, sz)
+}
+
+func BenchmarkAllocatorAllocMemFiler1e0(b *testing.B) {
+	benchmarkAllocatorAllocMemFiler(b, 0)
+}
+
+func BenchmarkAllocatorAllocMemFiler1e1(b *testing.B) {
+	benchmarkAllocatorAllocMemFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorAllocMemFiler1e2(b *testing.B) {
+	benchmarkAllocatorAllocMemFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorAllocMemFiler1e3(b *testing.B) {
+	benchmarkAllocatorAllocMemFiler(b, 1e3)
+}
+
+func benchmarkAllocatorAllocSimpleFileFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	benchmarkAllocatorAlloc(b, NewSimpleFileFiler(f), sz)
+}
+
+func BenchmarkAllocatorAllocSimpleFileFiler0(b *testing.B) {
+	benchmarkAllocatorAllocSimpleFileFiler(b, 0)
+}
+
+func BenchmarkAllocatorAllocSimpleFileFiler1e1(b *testing.B) {
+	benchmarkAllocatorAllocSimpleFileFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorAllocSimpleFileFiler1e2(b *testing.B) {
+	benchmarkAllocatorAllocSimpleFileFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorAllocSimpleFileFiler1e3(b *testing.B) {
+	benchmarkAllocatorAllocSimpleFileFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorAllocSimpleFileFiler1e4(b *testing.B) {
+	benchmarkAllocatorAllocSimpleFileFiler(b, 1e4)
+}
+
+func benchmarkAllocatorAllocRollbackFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	g := NewSimpleFileFiler(f)
+	var filer *RollbackFiler
+	if filer, err = NewRollbackFiler(
+		g,
+		func() error {
+			sz, err := filer.Size()
+			if err != nil {
+				return err
+			}
+
+			if err = g.Truncate(sz); err != nil {
+				return err
+			}
+
+			return g.Sync()
+		},
+		g,
+	); err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorAlloc(b, filer, sz)
+}
+
+func BenchmarkAllocatorAllocRollbackFiler0(b *testing.B) {
+	benchmarkAllocatorAllocRollbackFiler(b, 0)
+}
+
+func BenchmarkAllocatorAllocRollbackFiler1e1(b *testing.B) {
+	benchmarkAllocatorAllocRollbackFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorAllocRollbackFiler1e2(b *testing.B) {
+	benchmarkAllocatorAllocRollbackFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorAllocRollbackFiler1e3(b *testing.B) {
+	benchmarkAllocatorAllocRollbackFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorAllocRollbackFiler1e4(b *testing.B) {
+	benchmarkAllocatorAllocRollbackFiler(b, 1e4)
+}
+
+func benchmarkAllocatorAllocACIDFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	os.Remove(walName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		wal.Close()
+		os.Remove(walName)
+	}()
+
+	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorAlloc(b, filer, sz)
+}
+
+func BenchmarkAllocatorAllocACIDFiler0(b *testing.B) {
+	benchmarkAllocatorAllocACIDFiler(b, 0)
+}
+
+func BenchmarkAllocatorAllocACIDFiler1e1(b *testing.B) {
+	benchmarkAllocatorAllocACIDFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorAllocACIDFiler1e2(b *testing.B) {
+	benchmarkAllocatorAllocACIDFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorAllocACIDFiler1e3(b *testing.B) {
+	benchmarkAllocatorAllocACIDFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorAllocACIDFiler1e4(b *testing.B) {
+	benchmarkAllocatorAllocACIDFiler(b, 1e4)
+}
+
+func benchmarkAllocatorRndFree(b *testing.B, f Filer, sz int) {
+	b.SetBytes(int64(sz))
+
+	if err := f.BeginUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	if err = f.EndUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	v := make([]byte, sz)
+	ref := map[int64]struct{}{}
+	for i := 0; i < b.N; i++ {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		h, err := a.Alloc(v)
+		if h <= 0 || err != nil {
+			f.EndUpdate()
+			b.Error(h, err)
+			return
+		}
+
+		ref[h] = struct{}{}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+	runtime.GC()
+	b.ResetTimer()
+	for h := range ref {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		if err = a.Free(h); err != nil {
+			f.EndUpdate()
+			b.Error(h, err)
+			return
+		}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+}
+
+func benchmarkAllocatorRndFreeMemFiler(b *testing.B, sz int) {
+	f := NewMemFiler()
+	benchmarkAllocatorRndFree(b, f, sz)
+}
+
+func BenchmarkAllocatorRndFreeMemFiler0(b *testing.B) {
+	benchmarkAllocatorRndFreeMemFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndFreeMemFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndFreeMemFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndFreeMemFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndFreeMemFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndFreeMemFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndFreeMemFiler(b, 1e3)
+}
+
+func benchmarkAllocatorRndFreeSimpleFileFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	benchmarkAllocatorRndFree(b, NewSimpleFileFiler(f), sz)
+}
+
+func BenchmarkAllocatorRndFreeSimpleFileFiler0(b *testing.B) {
+	benchmarkAllocatorRndFreeSimpleFileFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndFreeSimpleFileFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndFreeSimpleFileFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndFreeSimpleFileFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorRndFreeSimpleFileFiler1e4(b *testing.B) {
+	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e4)
+}
+
+func benchmarkAllocatorRndFreeRollbackFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	g := NewSimpleFileFiler(f)
+	var filer *RollbackFiler
+	if filer, err = NewRollbackFiler(
+		g,
+		func() error {
+			sz, err := filer.Size()
+			if err != nil {
+				return err
+			}
+
+			if err = g.Truncate(sz); err != nil {
+				return err
+			}
+
+			return g.Sync()
+		},
+		g,
+	); err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorRndFree(b, filer, sz)
+}
+
+func BenchmarkAllocatorRndFreeRollbackFiler0(b *testing.B) {
+	benchmarkAllocatorRndFreeRollbackFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndFreeRollbackFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndFreeRollbackFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndFreeRollbackFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndFreeRollbackFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndFreeRollbackFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndFreeRollbackFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorRndFreeRollbackFiler1e4(b *testing.B) {
+	benchmarkAllocatorRndFreeRollbackFiler(b, 1e4)
+}
+
+func benchmarkAllocatorRndFreeACIDFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	os.Remove(walName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		wal.Close()
+		os.Remove(walName)
+	}()
+
+	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorRndFree(b, filer, sz)
+}
+
+func BenchmarkAllocatorRndFreeACIDFiler0(b *testing.B) {
+	benchmarkAllocatorRndFreeACIDFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndFreeACIDFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndFreeACIDFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndFreeACIDFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndFreeACIDFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndFreeACIDFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndFreeACIDFiler(b, 1e3)
+}
+
+func BenchmarkAllocatorRndFreeACIDFiler1e4(b *testing.B) {
+	benchmarkAllocatorRndFreeACIDFiler(b, 1e4)
+}
+
+func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
+	b.SetBytes(int64(sz))
+
+	if err := f.BeginUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	if err = f.EndUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	v := make([]byte, sz)
+	ref := map[int64]struct{}{}
+	for i := 0; i < b.N; i++ {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		h, err := a.Alloc(v)
+		if h <= 0 || err != nil {
+			f.EndUpdate()
+			b.Error(h, err)
+			return
+		}
+
+		ref[h] = struct{}{}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+	runtime.GC()
+	b.ResetTimer()
+	for h := range ref {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		if _, err = a.Get(v, h); err != nil {
+			f.EndUpdate()
+			b.Error(h, err)
+			return
+		}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+}
+
+func benchmarkAllocatorRndGetMemFiler(b *testing.B, sz int) {
+	f := NewMemFiler()
+	benchmarkAllocatorRndGet(b, f, sz)
+}
+
+func BenchmarkAllocatorRndGetMemFiler0(b *testing.B) {
+	benchmarkAllocatorRndGetMemFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndGetMemFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndGetMemFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndGetMemFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndGetMemFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndGetMemFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndGetMemFiler(b, 1e3)
+}
+
+func benchmarkAllocatorRndGetSimpleFileFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	benchmarkAllocatorRndGet(b, NewSimpleFileFiler(f), sz)
+}
+
+func BenchmarkAllocatorRndGetSimpleFileFiler0(b *testing.B) {
+	benchmarkAllocatorRndGetSimpleFileFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndGetSimpleFileFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndGetSimpleFileFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndGetSimpleFileFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndGetSimpleFileFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndGetSimpleFileFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndGetSimpleFileFiler(b, 1e3)
+}
+
+// func benchmarkAllocatorRndGetRollbackFiler(b *testing.B, sz int) {
+// 	os.Remove(testDbName)
+// 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
+//
+// 	defer func() {
+// 		f.Close()
+// 		os.Remove(testDbName)
+// 	}()
+//
+// 	g := NewSimpleFileFiler(f)
+// 	var filer *RollbackFiler
+// 	if filer, err = NewRollbackFiler(
+// 		g,
+// 		func() error {
+// 			sz, err := filer.Size()
+// 			if err != nil {
+// 				return err
+// 			}
+//
+// 			if err = g.Truncate(sz); err != nil {
+// 				return err
+// 			}
+//
+// 			return g.Sync()
+// 		},
+// 		g,
+// 	); err != nil {
+// 		b.Error(err)
+// 		return
+// 	}
+//
+// 	benchmarkAllocatorRndGet(b, filer, sz)
+// }
+//
+// func BenchmarkAllocatorRndGetRollbackFiler0(b *testing.B) {
+// 	benchmarkAllocatorRndGetRollbackFiler(b, 0)
+// }
+//
+// func BenchmarkAllocatorRndGetRollbackFiler1e1(b *testing.B) {
+// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e1)
+// }
+//
+// func BenchmarkAllocatorRndGetRollbackFiler1e2(b *testing.B) {
+// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e2)
+// }
+//
+// func BenchmarkAllocatorRndGetRollbackFiler1e3(b *testing.B) {
+// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e3)
+// }
+//
+// func BenchmarkAllocatorRndGetRollbackFiler1e4(b *testing.B) {
+// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e4)
+// }
+//
+// func benchmarkAllocatorRndGetACIDFiler(b *testing.B, sz int) {
+// 	dbg("%v: %d", now(), b.N)
+// 	os.Remove(testDbName)
+// 	os.Remove(walName)
+// 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
+//
+// 	defer func() {
+// 		f.Close()
+// 		os.Remove(testDbName)
+// 	}()
+//
+// 	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
+//
+// 	defer func() {
+// 		wal.Close()
+// 		os.Remove(walName)
+// 	}()
+//
+// 	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
+// 	if err != nil {
+// 		b.Error(err)
+// 		return
+// 	}
+//
+// 	benchmarkAllocatorRndGet(b, filer, sz)
+// }
+//
+// func BenchmarkAllocatorRndGetACIDFiler0(b *testing.B) {
+// 	benchmarkAllocatorRndGetACIDFiler(b, 0)
+// }
+//
+// func BenchmarkAllocatorRndGetACIDFiler1e1(b *testing.B) {
+// 	benchmarkAllocatorRndGetACIDFiler(b, 1e1)
+// }
+//
+// func BenchmarkAllocatorRndGetACIDFiler1e2(b *testing.B) {
+// 	benchmarkAllocatorRndGetACIDFiler(b, 1e2)
+// }
+//
+// func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
+// 	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
+// }
+//
+// func BenchmarkAllocatorRndGetACIDFiler1e4(b *testing.B) {
+// 	benchmarkAllocatorRndGetACIDFiler(b, 1e4)
+// }
