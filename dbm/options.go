@@ -69,8 +69,8 @@ type Options struct {
 	// Time to collect transactions before committing them into the WAL.
 	// Applicable if ACID == ACIDFull. All updates are held in memory
 	// during the grace period so it should not be more than few seconds at
-	// most.  GracePeriod == 0 will 2PC every single DB operation which is
-	// very slow. (Not yet implemented)
+	// most.  GracePeriod less than one second will be considered as one
+	// second.
 	GracePeriod time.Duration //TODO
 	wal         *os.File
 	checked     bool
@@ -79,6 +79,10 @@ type Options struct {
 func (o *Options) check(dbname string, new bool) (err error) {
 	if o.checked {
 		return
+	}
+
+	if o.GracePeriod < time.Second {
+		o.GracePeriod = time.Second
 	}
 
 	switch o.ACID {
@@ -149,6 +153,8 @@ func (o *Options) acidFiler(db *DB, f lldb.Filer) (r lldb.Filer, err error) {
 			return
 		}
 
+		db.acidState = stIdle
+		db.gracePeriod = o.GracePeriod
 		db.xact = true
 	}
 	return

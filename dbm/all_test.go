@@ -27,6 +27,7 @@ var (
 	oNoZip          = flag.Bool("nozip", false, "disable compression")
 	oACIDEnableWAL  = flag.Bool("wal", false, "enable WAL")
 	oACIDEnableXACT = flag.Bool("xact", false, "enable structural transactions")
+	oACIDGrace      = flag.Duration("grace", time.Second, "Grace period for -wal")
 )
 
 // Bench knobs.
@@ -43,6 +44,7 @@ func init() {
 	}
 	if *oACIDEnableWAL {
 		o.ACID = ACIDFull
+		o.GracePeriod = *oACIDGrace
 	}
 }
 

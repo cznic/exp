@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cznic/exp/lldb"
 )
@@ -33,23 +34,42 @@ var (
 	compress = true // Curious developer hooks
 )
 
+const (
+	stDisabled = iota // stDisabled must be zero
+	stIdle
+	stCollecting
+	stIdleArmed
+	stCollectingArmed
+	stCollectingTriggered
+)
+
+func init() {
+	if stDisabled != 0 {
+		panic("stDisabled != 0")
+	}
+}
+
 type DB struct {
-	_root      *Array          // Root directory, do not access directly
-	acache     treeCache       // Arrays cache
-	alloc      *lldb.Allocator // The machinery. Wraps filer
-	bkl        sync.Mutex      // Big Kernel Lock
-	closeMu    sync.Mutex      // Close() coordination
-	closed     bool            // it was
-	emptySize  int64           // Any header size including FLT.
-	f          *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
-	fcache     treeCache       // Files cache
-	filer      lldb.Filer      // Wraps f
-	removing   map[int64]bool  // BTrees being removed
-	removingMu sync.Mutex      // Remove() coordination
-	scache     treeCache       // System arrays cache
-	stop       chan int        // Remove() coordination
-	wg         sync.WaitGroup  // Remove() coordination
-	xact       bool            // Updates are made within automatic structural transactions
+	_root       *Array          // Root directory, do not access directly
+	acache      treeCache       // Arrays cache
+	acidNest    int             // Grace period nesting level
+	acidState   int             // Grace period FSM state.
+	acidTimer   *time.Timer     // Grace period timer
+	alloc       *lldb.Allocator // The machinery. Wraps filer
+	bkl         sync.Mutex      // Big Kernel Lock
+	closeMu     sync.Mutex      // Close() coordination
+	closed      bool            // it was
+	emptySize   int64           // Any header size including FLT.
+	f           *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
+	fcache      treeCache       // Files cache
+	filer       lldb.Filer      // Wraps f
+	gracePeriod time.Duration   // WAL grace period
+	removing    map[int64]bool  // BTrees being removed
+	removingMu  sync.Mutex      // Remove() coordination
+	scache      treeCache       // System arrays cache
+	stop        chan int        // Remove() coordination
+	wg          sync.WaitGroup  // Remove() coordination
+	xact        bool            // Updates are made within automatic structural transactions
 }
 
 // Create creates the named DB file mode 0666 (before umask). The file must not
@@ -200,7 +220,20 @@ func (db *DB) Close() (err error) {
 	db.closeMu.Lock()
 	defer db.closeMu.Unlock()
 
-	e := db.leave(&err)
+	if db.acidTimer != nil {
+		db.acidTimer.Stop()
+	}
+
+	var e error
+	for db.acidNest > 0 {
+		db.acidNest--
+		if err := db.filer.EndUpdate(); err != nil {
+			e = err
+		}
+	}
+	err = e
+
+	e = db.leave(&err)
 	if err = db.close(); err == nil {
 		err = e
 	}
@@ -659,6 +692,30 @@ func (db *DB) Files() (a Array, err error) {
 
 func (db *DB) enter() (err error) {
 	db.bkl.Lock()
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stDisabled:
+		// nop
+	case stIdle:
+		if err = db.filer.BeginUpdate(); err != nil {
+			return
+		}
+
+		db.acidNest = 1
+		db.acidTimer = time.AfterFunc(db.gracePeriod, db.timeout)
+		db.acidState = stCollecting
+	case stCollecting:
+		db.acidNest++
+	case stIdleArmed:
+		db.acidNest = 1
+		db.acidState = stCollectingArmed
+	case stCollectingArmed:
+		db.acidNest++
+	case stCollectingTriggered:
+		db.acidNest++
+	}
+
 	if db.xact {
 		err = db.filer.BeginUpdate()
 	}
@@ -666,6 +723,35 @@ func (db *DB) enter() (err error) {
 }
 
 func (db *DB) leave(err *error) error {
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stDisabled:
+		// nop
+	case stIdle:
+		panic("internal error")
+	case stCollecting:
+		db.acidNest--
+		if db.acidNest == 0 {
+			db.acidState = stIdleArmed
+		}
+	case stIdleArmed:
+		panic("internal error")
+	case stCollectingArmed:
+		db.acidNest--
+		if db.acidNest == 0 {
+			db.acidState = stIdleArmed
+		}
+	case stCollectingTriggered:
+		db.acidNest--
+		if db.acidNest == 0 {
+			if e := db.filer.EndUpdate(); e != nil && err == nil {
+				*err = e
+			}
+			db.acidState = stIdle
+		}
+	}
+
 	if db.xact {
 		switch {
 		case *err != nil:
@@ -676,6 +762,32 @@ func (db *DB) leave(err *error) error {
 	}
 	db.bkl.Unlock()
 	return *err
+}
+
+func (db *DB) timeout() {
+	db.bkl.Lock()
+	defer db.bkl.Unlock()
+
+	if db.closed {
+		return
+	}
+
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stIdle:
+		panic("internal error")
+	case stCollecting:
+		db.acidState = stCollectingTriggered
+	case stIdleArmed:
+		db.filer.EndUpdate() //TODO+ async error reporting (poll in leave()?)
+		//TODO? Rollback after EndUpdate fails?
+		db.acidState = stIdle
+	case stCollectingArmed:
+		db.acidState = stCollectingTriggered
+	case stCollectingTriggered:
+		panic("internal error")
+	}
 }
 
 // Sync commits the current contents of the DB file to stable storage.
