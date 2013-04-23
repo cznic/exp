@@ -77,14 +77,13 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}
 
-	if opts.ACID&ACIDDisableWAL == 0 {
-		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
-			return
-		}
+	db = &DB{emptySize: 128, f: f}
+
+	if filer, err = opts.acidFiler(db, filer); err != nil {
+		return nil, err
 	}
 
-	db = &DB{emptySize: 128, f: f, filer: filer}
-
+	db.filer = filer
 	if err = filer.BeginUpdate(); err != nil {
 		return
 	}
@@ -102,8 +101,6 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 	}
 
 	db.alloc.Compress = compress
-	db.xact = opts.ACID&ACIDDisableStructuralTransactions == 0
-
 	return
 }
 
@@ -150,12 +147,6 @@ func Open(name string, opts *Options) (db *DB, err error) {
 	}
 
 	filer := lldb.Filer(lldb.NewSimpleFileFiler(f))
-	if opts.ACID&ACIDDisableWAL == 0 {
-		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
-			return
-		}
-	}
-
 	sz, err := filer.Size()
 	if err != nil {
 		return
@@ -175,7 +166,12 @@ func Open(name string, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
 
-	db = &DB{f: f, filer: filer, xact: opts.ACID&ACIDDisableStructuralTransactions == 0}
+	db = &DB{f: f}
+	if filer, err = opts.acidFiler(db, filer); err != nil {
+		return nil, err
+	}
+
+	db.filer = filer
 	switch h.ver {
 	default:
 		return nil, &os.PathError{Op: "dbm.Open", Path: name, Err: fmt.Errorf("unknown dbm file format version %#x", h.ver)}
@@ -727,4 +723,43 @@ func (db *DB) Inc(delta int64, array string, subscripts ...interface{}) (val int
 	}
 
 	return a.inc(delta)
+}
+
+// BeginUpdate increments a "nesting" counter (initially zero). Every
+// call to BeginUpdate must be eventually "balanced" by exactly one of
+// EndUpdate or Rollback. Calls to BeginUpdate may nest.
+func (db *DB) BeginUpdate() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.BeginUpdate()
+}
+
+// EndUpdate decrements the "nesting" counter. If it's zero after that then
+// assume the "storage" has reached structural integrity (after a batch of
+// partial updates). Invocation of an unbalanced EndUpdate is an error.
+func (db *DB) EndUpdate() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.EndUpdate()
+}
+
+// Rollback cancels and undoes the innermost pending update level (if
+// transactions are eanbled).  Rollback decrements the "nesting" counter.
+// Invocation of an unbalanced Rollback is an error.
+func (db *DB) Rollback() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.Rollback()
 }
