@@ -1333,10 +1333,6 @@ func BenchmarkBTreeSetMemFiler1e3(b *testing.B) {
 	benchmarkBTreeSetMemFiler(b, 1e3)
 }
 
-func BenchmarkBTreeSetMemFiler1e4(b *testing.B) {
-	benchmarkBTreeSetMemFiler(b, 1e4)
-}
-
 func benchmarkBTreeSetSimpleFileFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -1366,10 +1362,6 @@ func BenchmarkBTreeSetSimpleFileFiler1e2(b *testing.B) {
 
 func BenchmarkBTreeSetSimpleFileFiler1e3(b *testing.B) {
 	benchmarkBTreeSetSimpleFileFiler(b, 1e3)
-}
-
-func BenchmarkBTreeSetSimpleFileFiler1e4(b *testing.B) {
-	benchmarkBTreeSetSimpleFileFiler(b, 1e4)
 }
 
 func benchmarkBTreeSetRollbackFiler(b *testing.B, sz int) {
@@ -1425,10 +1417,6 @@ func BenchmarkBTreeSetRollbackFiler1e3(b *testing.B) {
 	benchmarkBTreeSetRollbackFiler(b, 1e3)
 }
 
-func BenchmarkBTreeSetRollbackFiler1e4(b *testing.B) {
-	benchmarkBTreeSetRollbackFiler(b, 1e4)
-}
-
 func benchmarkBTreeSetACIDFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	os.Remove(walName)
@@ -1475,8 +1463,4 @@ func BenchmarkBTreeSetACIDFiler1e2(b *testing.B) {
 
 func BenchmarkBTreeSetACIDFiler1e3(b *testing.B) {
 	benchmarkBTreeSetACIDFiler(b, 1e3)
-}
-
-func BenchmarkBTreeSetACIDFiler1e4(b *testing.B) {
-	benchmarkBTreeSetACIDFiler(b, 1e4)
 }

@@ -485,6 +485,7 @@ func (r *RollbackFiler) EndUpdate() (err error) {
 		if nwr == 0 {
 			return
 		}
+
 		r.fakeSize = sz
 		return r.checkpoint()
 	default:

@@ -1237,10 +1237,6 @@ func BenchmarkAllocatorAllocSimpleFileFiler1e3(b *testing.B) {
 	benchmarkAllocatorAllocSimpleFileFiler(b, 1e3)
 }
 
-func BenchmarkAllocatorAllocSimpleFileFiler1e4(b *testing.B) {
-	benchmarkAllocatorAllocSimpleFileFiler(b, 1e4)
-}
-
 func benchmarkAllocatorAllocRollbackFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -1294,10 +1290,6 @@ func BenchmarkAllocatorAllocRollbackFiler1e3(b *testing.B) {
 	benchmarkAllocatorAllocRollbackFiler(b, 1e3)
 }
 
-func BenchmarkAllocatorAllocRollbackFiler1e4(b *testing.B) {
-	benchmarkAllocatorAllocRollbackFiler(b, 1e4)
-}
-
 func benchmarkAllocatorAllocACIDFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	os.Remove(walName)
@@ -1344,10 +1336,6 @@ func BenchmarkAllocatorAllocACIDFiler1e2(b *testing.B) {
 
 func BenchmarkAllocatorAllocACIDFiler1e3(b *testing.B) {
 	benchmarkAllocatorAllocACIDFiler(b, 1e3)
-}
-
-func BenchmarkAllocatorAllocACIDFiler1e4(b *testing.B) {
-	benchmarkAllocatorAllocACIDFiler(b, 1e4)
 }
 
 func benchmarkAllocatorRndFree(b *testing.B, f Filer, sz int) {
@@ -1464,10 +1452,6 @@ func BenchmarkAllocatorRndFreeSimpleFileFiler1e3(b *testing.B) {
 	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e3)
 }
 
-func BenchmarkAllocatorRndFreeSimpleFileFiler1e4(b *testing.B) {
-	benchmarkAllocatorRndFreeSimpleFileFiler(b, 1e4)
-}
-
 func benchmarkAllocatorRndFreeRollbackFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -1521,10 +1505,6 @@ func BenchmarkAllocatorRndFreeRollbackFiler1e3(b *testing.B) {
 	benchmarkAllocatorRndFreeRollbackFiler(b, 1e3)
 }
 
-func BenchmarkAllocatorRndFreeRollbackFiler1e4(b *testing.B) {
-	benchmarkAllocatorRndFreeRollbackFiler(b, 1e4)
-}
-
 func benchmarkAllocatorRndFreeACIDFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	os.Remove(walName)
@@ -1571,10 +1551,6 @@ func BenchmarkAllocatorRndFreeACIDFiler1e2(b *testing.B) {
 
 func BenchmarkAllocatorRndFreeACIDFiler1e3(b *testing.B) {
 	benchmarkAllocatorRndFreeACIDFiler(b, 1e3)
-}
-
-func BenchmarkAllocatorRndFreeACIDFiler1e4(b *testing.B) {
-	benchmarkAllocatorRndFreeACIDFiler(b, 1e4)
 }
 
 func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
@@ -1744,10 +1720,6 @@ func BenchmarkAllocatorRndGetSimpleFileFiler1e3(b *testing.B) {
 // 	benchmarkAllocatorRndGetRollbackFiler(b, 1e3)
 // }
 //
-// func BenchmarkAllocatorRndGetRollbackFiler1e4(b *testing.B) {
-// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e4)
-// }
-//
 // func benchmarkAllocatorRndGetACIDFiler(b *testing.B, sz int) {
 // 	dbg("%v: %d", now(), b.N)
 // 	os.Remove(testDbName)
@@ -1795,8 +1767,4 @@ func BenchmarkAllocatorRndGetSimpleFileFiler1e3(b *testing.B) {
 //
 // func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
 // 	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
-// }
-//
-// func BenchmarkAllocatorRndGetACIDFiler1e4(b *testing.B) {
-// 	benchmarkAllocatorRndGetACIDFiler(b, 1e4)
 // }
