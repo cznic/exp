@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cznic/exp/lldb"
@@ -30,8 +31,10 @@ const (
 	systemPrefix = 'S'
 )
 
+// Test hooks
 var (
-	compress = true // Curious developer hooks
+	compress      = true
+	activeVictors int32
 )
 
 const (
@@ -607,6 +610,7 @@ func (db *DB) boot() (err error) {
 }
 
 func (db *DB) victor(removes Array, h int64) {
+	atomic.AddInt32(&activeVictors, 1)
 	var err error
 	var finished bool
 	defer func() {
@@ -618,6 +622,7 @@ func (db *DB) victor(removes Array, h int64) {
 			db.leave(&err)
 		}
 		db.wg.Done()
+		atomic.AddInt32(&activeVictors, -1)
 	}()
 
 	db.enter()
@@ -793,6 +798,9 @@ func (db *DB) timeout() {
 // Sync commits the current contents of the DB file to stable storage.
 // Typically, this means flushing the file system's in-memory copy of recently
 // written data to disk.
+//
+// NOTE: There's no good reason to invoke Sync if db uses 2PC/WAL (see
+// Options.ACID).
 func (db *DB) Sync() (err error) {
 	if err = db.enter(); err != nil {
 		return

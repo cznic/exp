@@ -244,11 +244,11 @@ package dbm
 
 /*
 
-ACID + grace period FSM STT
+ACID GracePeriod != 0 FSM STT
 
 +------------+-----------------+---------------+-----------------+
 |\  Event    |                 |               |                 |
-| \--------\ |     enter       |       leave   |     timeout     |
+| \--------\ |     enter       |     leave     |     timeout     |
 |   State   \|                 |               |                 |
 +------------+-----------------+---------------+-----------------+
 | idle       | BeginUpdate     | panic         | panic           |

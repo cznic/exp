@@ -4,6 +4,10 @@
 
 package dbm
 
+//DONE 2012-04-24 15:56 go test -race -cpu 4 -bench .
+//DONE 2012-04-24 16:05 go test -race -cpu 4 -bench . -xact
+//DONE 2012-04-24 16:25 go test -race -cpu 4 -bench . -wall
+
 import (
 	"bytes"
 	"encoding/hex"
@@ -16,6 +20,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +33,7 @@ var (
 	oACIDEnableWAL  = flag.Bool("wal", false, "enable WAL")
 	oACIDEnableXACT = flag.Bool("xact", false, "enable structural transactions")
 	oACIDGrace      = flag.Duration("grace", time.Second, "Grace period for -wal")
+	oBench          = flag.Bool("tbench", false, "enable (long) TestBench* tests")
 )
 
 // Bench knobs.
@@ -1316,8 +1322,19 @@ func TestRemoveArray0(t *testing.T) {
 		return
 	}
 
+	if err = db.enter(); err != nil {
+		t.Error(err)
+		return
+	}
+
 	tr, err := db.acache.getTree(db, arraysPrefix, aname, false, aCacheSize)
 	if err != nil {
+		db.leave(&err)
+		t.Error(err)
+		return
+	}
+
+	if err = db.leave(&err); err != nil {
 		t.Error(err)
 		return
 	}
@@ -1337,6 +1354,18 @@ func TestRemoveArray0(t *testing.T) {
 		return
 	}
 
+	for {
+		<-time.After(time.Second)
+		if atomic.LoadInt32(&activeVictors) == 0 {
+			break
+		}
+	}
+
+	if err := db.BeginUpdate(); err != nil {
+		t.Error(err)
+		return
+	}
+
 	err = db.alloc.Verify(
 		lldb.NewMemFiler(),
 		func(err error) bool {
@@ -1345,7 +1374,13 @@ func TestRemoveArray0(t *testing.T) {
 		},
 		nil,
 	)
+
 	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err := db.EndUpdate(); err != nil {
 		t.Error(err)
 		return
 	}
@@ -1898,13 +1933,6 @@ func TestFile0(t *testing.T) {
 		t.Error(err)
 		return
 	}
-
-	d, err := dump(f.tree)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("\n%s", d)
 
 	names, err = enumStrKeys(a)
 	if err != nil {
@@ -2623,4 +2651,220 @@ func TestTmpDirRemoval(t *testing.T) {
 		}
 	}
 
+}
+
+/*
+
+2013-04-24
+==========
+
+(13:48) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$ . bench
+++ go test -v -run Bench -keep -tbench -cpu 4
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (114.56 seconds)
+	all_test.go:2678: WR: 52696 ops in 6.000e+01 s, 8.783e+02 ops/s, 1.139e-03 s/op
+	all_test.go:2727: RD: 52696 ops in 5.451e+01 s, 9.667e+02 ops/s, 1.034e-03 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	114.575s
+++ go test -v -run Bench -keep -tbench -cpu 4 -xact
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (112.89 seconds)
+	all_test.go:2678: WR: 46591 ops in 6.000e+01 s, 7.765e+02 ops/s, 1.288e-03 s/op
+	all_test.go:2727: RD: 46591 ops in 5.284e+01 s, 8.818e+02 ops/s, 1.134e-03 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	112.909s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 0ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (60.35 seconds)
+	all_test.go:2678: WR: 606 ops in 6.005e+01 s, 1.009e+01 ops/s, 9.909e-02 s/op, max WAL size 2157568
+	all_test.go:2727: RD: 606 ops in 1.252e-01 s, 4.841e+03 ops/s, 2.066e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	60.363s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (87.66 seconds)
+	all_test.go:2678: WR: 28027 ops in 6.000e+01 s, 4.671e+02 ops/s, 2.141e-03 s/op, max WAL size 3241648
+	all_test.go:2727: RD: 28027 ops in 2.746e+01 s, 1.021e+03 ops/s, 9.799e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	87.676s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (89.65 seconds)
+	all_test.go:2678: WR: 29882 ops in 6.000e+01 s, 4.980e+02 ops/s, 2.008e-03 s/op, max WAL size 2778448
+	all_test.go:2727: RD: 29882 ops in 2.942e+01 s, 1.016e+03 ops/s, 9.846e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	89.663s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 100ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (95.21 seconds)
+	all_test.go:2678: WR: 34607 ops in 6.000e+01 s, 5.768e+02 ops/s, 1.734e-03 s/op, max WAL size 2242960
+	all_test.go:2727: RD: 34607 ops in 3.494e+01 s, 9.903e+02 ops/s, 1.010e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	95.225s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1s
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (108.43 seconds)
+	all_test.go:2678: WR: 44756 ops in 6.000e+01 s, 7.459e+02 ops/s, 1.341e-03 s/op, max WAL size 1375056
+	all_test.go:2727: RD: 44756 ops in 4.823e+01 s, 9.279e+02 ops/s, 1.078e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	108.443s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10s
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (111.52 seconds)
+	all_test.go:2678: WR: 47580 ops in 6.000e+01 s, 7.930e+02 ops/s, 1.261e-03 s/op, max WAL size 704256
+	all_test.go:2727: RD: 47580 ops in 5.126e+01 s, 9.283e+02 ops/s, 1.077e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	111.529s
+(14:01) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$
+
+===============================================================================
+
+(14:02) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$ OPTS=-nozip . bench
+++ go test -v -run Bench -keep -tbench -cpu 4 -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (100.73 seconds)
+	all_test.go:2737: WR: 186071 ops in 6.000e+01 s, 3.101e+03 ops/s, 3.225e-04 s/op
+	all_test.go:2786: RD: 186071 ops in 4.057e+01 s, 4.586e+03 ops/s, 2.181e-04 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	100.739s
+++ go test -v -run Bench -keep -tbench -cpu 4 -xact -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (103.31 seconds)
+	all_test.go:2737: WR: 72776 ops in 6.000e+01 s, 1.213e+03 ops/s, 8.245e-04 s/op
+	all_test.go:2786: RD: 72776 ops in 4.322e+01 s, 1.684e+03 ops/s, 5.939e-04 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	103.318s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 0ms -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (60.27 seconds)
+	all_test.go:2737: WR: 503 ops in 6.003e+01 s, 8.379e+00 ops/s, 1.193e-01 s/op, max WAL size 5005056
+	all_test.go:2786: RD: 503 ops in 4.467e-02 s, 1.126e+04 ops/s, 8.881e-05 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	60.281s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1ms -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (82.80 seconds)
+	all_test.go:2737: WR: 51227 ops in 6.000e+01 s, 8.538e+02 ops/s, 1.171e-03 s/op, max WAL size 9436816
+	all_test.go:2786: RD: 51227 ops in 2.239e+01 s, 2.288e+03 ops/s, 4.371e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	82.818s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10ms -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (85.57 seconds)
+	all_test.go:2737: WR: 58299 ops in 6.000e+01 s, 9.716e+02 ops/s, 1.029e-03 s/op, max WAL size 10214656
+	all_test.go:2786: RD: 58299 ops in 2.536e+01 s, 2.299e+03 ops/s, 4.350e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	85.577s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 100ms -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (87.81 seconds)
+	all_test.go:2739: WR: 62461 ops in 6.000e+01 s, 1.041e+03 ops/s, 9.606e-04 s/op, max WAL size 9486960
+	all_test.go:2788: RD: 62461 ops in 2.747e+01 s, 2.274e+03 ops/s, 4.398e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	87.818s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1s -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (93.33 seconds)
+	all_test.go:2739: WR: 73658 ops in 6.000e+01 s, 1.228e+03 ops/s, 8.146e-04 s/op, max WAL size 7266464
+	all_test.go:2788: RD: 73658 ops in 3.295e+01 s, 2.236e+03 ops/s, 4.473e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	93.338s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10s -nozip
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (97.34 seconds)
+	all_test.go:2739: WR: 75944 ops in 6.000e+01 s, 1.266e+03 ops/s, 7.901e-04 s/op, max WAL size 5116016
+	all_test.go:2788: RD: 75944 ops in 3.690e+01 s, 2.058e+03 ops/s, 4.859e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	97.354s
+(14:14) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$
+
+*/
+func TestBenchArraySetGet(t *testing.T) {
+	if !*oBench {
+		t.Log("Must be enabled by -tbench")
+		return
+	}
+
+	preRemove(dbname, false)
+
+	db, err := Create(dbname, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
+
+	a, err := db.Array("test")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	c := time.After(time.Minute)
+	t0 := time.Now()
+	var maxSet int64
+loop:
+	for i := 0; ; {
+		select {
+		case <-c:
+			maxSet = int64(i - 1)
+			ftot := float64(time.Since(t0)) / float64(time.Second)
+			s := ""
+			if af, ok := db.filer.(*lldb.ACIDFiler0); ok {
+				s = fmt.Sprintf(", max WAL size %d", af.PeakWALSize())
+			}
+			t.Logf("WR: %d ops in %8.3e s, %8.3e ops/s, %8.3e s/op%s", i, ftot, float64(i)/ftot, ftot/float64(i), s)
+			break loop
+		default:
+		}
+
+		if err = a.Set(i^0x55555555, i); err != nil {
+			t.Error(err)
+			return
+		}
+
+		i++
+	}
+
+	if err = db.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if db, err = Open(dbname, o); err != nil {
+		t.Error(err)
+		return
+	}
+
+	a, err = db.Array("test")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	t0 = time.Now()
+	for i := int64(0); i <= maxSet; i++ {
+		v, err := a.Get(i)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if g, e := v, int64(i^0x55555555); g != e {
+			t.Errorf("i %d: %T(%v) %T(%v)", i, g, g, e, e)
+			return
+		}
+	}
+
+	ftot := float64(time.Since(t0)) / float64(time.Second)
+	i := maxSet + 1
+	s := ""
+	if af, ok := db.filer.(*lldb.ACIDFiler0); ok {
+		s = fmt.Sprintf(", max WAL size %d", af.PeakWALSize())
+	}
+	t.Logf("RD: %d ops in %8.3e s, %8.3e ops/s, %8.3e s/op%s", i, ftot, float64(i)/ftot, ftot/float64(i), s)
 }

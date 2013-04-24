@@ -18,9 +18,9 @@ import (
 const (
 	// BeginUpdate/EndUpdate/Rollback will be no-ops. All operations
 	// updating a DB will be written immediately including partial updates
-	// during operation's progress. If any of the updates fails, the DB can
-	// become unusable. The same applies to DB crashes and/or any other non
-	// clean DB shutdown.
+	// during operation's progress. If any update fails, the DB can become
+	// unusable. The same applies to DB crashes and/or any other non clean
+	// DB shutdown.
 	ACIDNone = iota
 
 	// Enable transactions. BeginUpdate/EndUpdate/Rollback will be
@@ -38,6 +38,9 @@ const (
 	// from crashes and/or any other non clean DB shutdown. Only last
 	// uncommited transaction (transaction in progress ATM of a crash) can
 	// get lost.
+	//
+	// NOTE: Options.GracePeriod may extend the span of a single
+	// transaction to a batch of multiple transactions.
 	ACIDFull
 )
 
@@ -47,7 +50,7 @@ const (
 // exported fields, which is backward compatible as long as client code uses
 // field names to assign values of imported struct types literals.
 type Options struct {
-	// See the OptACID typed constants documentation.
+	// See the ACID* constants documentation.
 	ACID int
 
 	// The write ahead log pathname. Applicable iff ACID == ACIDFull. May
@@ -67,11 +70,18 @@ type Options struct {
 	WAL string
 
 	// Time to collect transactions before committing them into the WAL.
-	// Applicable if ACID == ACIDFull. All updates are held in memory
+	// Applicable iff ACID == ACIDFull. All updates are held in memory
 	// during the grace period so it should not be more than few seconds at
-	// most.  GracePeriod less than one second will be considered as one
-	// second.
-	GracePeriod time.Duration //TODO
+	// most.
+	//
+	// Recommended value for GracePeriod is 1 second.
+	//
+	// NOTE: Using small GracePeriod values will make DB updates very slow.
+	// Zero GracePeriod will make every single update a separate 2PC/WAL
+	// transaction.  Values smaller than about 100-200 milliseconds
+	// (particularly for mechanical, rotational HDs) are not recommended
+	// and they may not be always honored.
+	GracePeriod time.Duration
 	wal         *os.File
 	checked     bool
 }
@@ -79,10 +89,6 @@ type Options struct {
 func (o *Options) check(dbname string, new bool) (err error) {
 	if o.checked {
 		return
-	}
-
-	if o.GracePeriod < time.Second {
-		o.GracePeriod = time.Second
 	}
 
 	switch o.ACID {
@@ -155,6 +161,9 @@ func (o *Options) acidFiler(db *DB, f lldb.Filer) (r lldb.Filer, err error) {
 
 		db.acidState = stIdle
 		db.gracePeriod = o.GracePeriod
+		if o.GracePeriod == 0 {
+			db.acidState = stDisabled
+		}
 		db.xact = true
 	}
 	return
