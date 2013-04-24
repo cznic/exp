@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/cznic/mathutil"
 )
 
 var _ Filer = &ACIDFiler0{}
@@ -85,7 +87,8 @@ type ACIDFiler0 struct {
 	wal      *os.File
 	bwal     *bufio.Writer
 	data     *BTree
-	testHook bool // keeps WAL untruncated (once)
+	testHook bool  // keeps WAL untruncated (once)
+	peakWal  int64 // Tracks WAL maximum used size
 }
 
 // NewACIDFiler0 returns a  newly created ACIDFiler0 with WAL in wal.
@@ -138,6 +141,14 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 
 			if err = r.wal.Sync(); err != nil {
 				return
+			}
+
+			wfi, err := r.wal.Stat()
+			switch err != nil {
+			case true:
+				// unexpected, but ignored
+			case false:
+				r.peakWal = mathutil.MaxInt64(wfi.Size(), r.peakWal)
 			}
 
 			// Phase 1 commit complete
@@ -196,6 +207,11 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 	}
 
 	return r, nil
+}
+
+// PeakWALSize reports the maximum size WAL has ever used.
+func (a ACIDFiler0) PeakWALSize() int64 {
+	return a.peakWal
 }
 
 func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error) {
