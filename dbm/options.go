@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/cznic/exp/lldb"
@@ -41,6 +42,10 @@ const (
 	//
 	// NOTE: Options.GracePeriod may extend the span of a single
 	// transaction to a batch of multiple transactions.
+	//
+	// NOTE2: Non zero GracePeriod requires GOMAXPROCS > 1 to work. Dbm
+	// checks GOMAXPROCS in such case and if the value is 1 it
+	// automatically sets GOMAXPROCS = 2.
 	ACIDFull
 )
 
@@ -161,10 +166,18 @@ func (o *Options) acidFiler(db *DB, f lldb.Filer) (r lldb.Filer, err error) {
 
 		db.acidState = stIdle
 		db.gracePeriod = o.GracePeriod
+		db.xact = true
 		if o.GracePeriod == 0 {
 			db.acidState = stDisabled
+			break
 		}
-		db.xact = true
+
+		// Ensure GOMAXPROCS > 1, required for ACID FSM
+		if n := runtime.GOMAXPROCS(0); n > 1 {
+			return
+		}
+
+		runtime.GOMAXPROCS(2)
 	}
 	return
 }

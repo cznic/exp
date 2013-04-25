@@ -56,7 +56,7 @@ const (
 	ErrFreeTailBlock         // Last block is free
 	ErrHead                  // Head of a free block list has non zero Prev (.Arg)
 	ErrInvalidRelocTarget    // Reloc doesn't target (.Arg) a short or long used block
-	ErrInvalidWAL            // Corrupted write ahead log. .More = file name
+	ErrInvalidWAL            // Corrupted write ahead log. .Name: file name, .More: more
 	ErrLongFreeBlkTooLong    // Long free block spans beyond EOF, size .Arg
 	ErrLongFreeBlkTooShort   // Long free block must have at least 2 atoms, got only .Arg
 	ErrLongFreeNextBeyondEOF // Long free block .Next (.Arg) spans beyond EOF
@@ -81,6 +81,7 @@ type ErrILSEQ struct {
 	Arg  int64
 	Arg2 int64
 	Arg3 int64
+	Name string
 	More interface{}
 }
 
@@ -112,7 +113,7 @@ func (e *ErrILSEQ) Error() string {
 	case ErrInvalidRelocTarget:
 		return fmt.Sprintf("Used reloc block at offset %#x: Target (%#x) is not a short or long used block", e.Off, e.Arg)
 	case ErrInvalidWAL:
-		return fmt.Sprintf("Corrupted write ahead log file: %v", e.More)
+		return fmt.Sprintf("Corrupted write ahead log file: %q %v", e.Name, e.More)
 	case ErrLongFreeBlkTooLong:
 		return fmt.Sprintf("Long free block at offset %#x: Size (%#x) beyond EOF", e.Off, e.Arg)
 	case ErrLongFreeBlkTooShort:

@@ -883,3 +883,52 @@ func (db *DB) Rollback() (err error) {
 
 	return db.filer.Rollback()
 }
+
+// Verify attempts to find any structural errors in DB wrt the
+// organization of it as defined by lldb.Allocator. 'bitmap' is a scratch pad for
+// necessary bookkeeping and will grow to at most to DB size/128 (0,78%). Any problems found are reported to 'log' except
+// non verify related errors like disk read fails etc. If 'log' returns false
+// or the error doesn't allow to (reliably) continue, the verification process
+// is stopped and an error is returned from the Verify function. Passing a nil
+// log works like providing a log function always returning false. Any
+// non-structural errors, like for instance Filer read errors, are NOT reported
+// to 'log', but returned as the Verify's return value, because Verify cannot
+// proceed in such cases. Verify returns nil only if it fully completed
+// verifying DB without detecting any error.
+//
+// It is recommended to limit the number reported problems by returning false
+// from 'log' after reaching some limit. Huge and corrupted DB can produce an
+// overwhelming error report dataset.
+//
+// The verifying process will scan the whole DB at least 3 times (a trade
+// between processing space and time consumed). It doesn't read the content of
+// free blocks above the head/tail info bytes. If the 3rd phase detects lost
+// free space, then a 4th scan (a faster one) is performed to precisely report
+// all of them.
+//
+// If the DB to be verified is reasonably small, respective if its
+// size/128 can comfortably fit within process's free memory, then it is
+// recommended to consider using a lldb.MemFiler for the bit map.
+//
+// Statistics are returned via 'stats' if non nil. The statistics are valid
+// only if Verify succeeded, ie. it didn't reported anything to log and it
+// returned a nil error.
+func (db *DB) Verify(bitmap lldb.Filer, log func(error) bool, stats *lldb.AllocStats) (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.alloc.Verify(bitmap, log, stats)
+}
+
+// PeakWALSize reports the maximum size WAL has ever used.
+func (db *DB) PeakWALSize() int64 {
+	af, ok := db.filer.(*lldb.ACIDFiler0)
+	if !ok {
+		return 0
+	}
+
+	return af.PeakWALSize()
+}
