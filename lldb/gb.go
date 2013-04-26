@@ -387,7 +387,7 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 			b = b[1:]
 		}
 	}
-	return
+	return append([]interface{}(nil), scalars...), nil
 
 corrupted:
 	return nil, fmt.Errorf("DecodeScalars: corrupted data")

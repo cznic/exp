@@ -67,7 +67,7 @@ func main() {
 	ncrash := 1
 	for {
 		os.Remove(*oFile)
-		lifespan := time.Duration(5+rand.Intn(5)) * time.Second
+		lifespan := time.Duration(10+rand.Intn(10)) * time.Second
 		proc, err := os.StartProcess(
 			os.Args[0],
 			[]string{os.Args[0], "-test", "-f", *oFile},
@@ -111,7 +111,6 @@ func main() {
 			slg.Fatal(err)
 		}
 
-		const MinKeys = 2000
 		lastKey := int64(-1)
 		if err = s.Do(func(subscripts, value []interface{}) (bool, error) {
 			if n := len(subscripts); n != 1 {
@@ -147,7 +146,7 @@ func main() {
 			slg.Fatal(err)
 		}
 
-		if lastKey < MinKeys {
+		if lastKey < 0 {
 			slg.Fatal(lastKey)
 		}
 
