@@ -34,8 +34,44 @@ const (
 	gbComplex6
 	gbComplex7
 	gbComplex8
+	gbBytes00
+	gbBytes01
+	gbBytes02
+	gbBytes03
+	gbBytes04
+	gbBytes05
+	gbBytes06
+	gbBytes07
+	gbBytes08
+	gbBytes09
+	gbBytes10
+	gbBytes11
+	gbBytes12
+	gbBytes13
+	gbBytes14
+	gbBytes15
+	gbBytes16
+	gbBytes17
 	gbBytes1
 	gbBytes2 // Offset by one to allow 64kB sized []byte.
+	gbString00
+	gbString01
+	gbString02
+	gbString03
+	gbString04
+	gbString05
+	gbString06
+	gbString07
+	gbString08
+	gbString09
+	gbString10
+	gbString11
+	gbString12
+	gbString13
+	gbString14
+	gbString15
+	gbString16
+	gbString17
 	gbString1
 	gbString2
 	gbUintP1
@@ -99,6 +135,12 @@ func EncodeScalars(scalars ...interface{}) (b []byte, err error) {
 
 		case string:
 			n := len(x)
+			if n <= 17 {
+				b = append(b, byte(gbString00+n))
+				b = append(b, []byte(x)...)
+				break
+			}
+
 			if n > 65535 {
 				return nil, fmt.Errorf("EncodeScalars: cannot encode string of length %d (limit 65536)", n)
 			}
@@ -134,6 +176,12 @@ func EncodeScalars(scalars ...interface{}) (b []byte, err error) {
 			encUint(uint64(x), &b)
 		case []byte:
 			n := len(x)
+			if n <= 17 {
+				b = append(b, byte(gbBytes00+n))
+				b = append(b, []byte(x)...)
+				break
+			}
+
 			if n > 655356 {
 				return nil, fmt.Errorf("EncodeScalars: cannot encode []byte of length %d (limit 65536)", n)
 			}
@@ -292,6 +340,17 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 
 			scalars = append(scalars, complex(re, decodeFloat(b[1:n])))
 			b = b[n:]
+		case gbBytes00, gbBytes01, gbBytes02, gbBytes03, gbBytes04,
+			gbBytes05, gbBytes06, gbBytes07, gbBytes08, gbBytes09,
+			gbBytes10, gbBytes11, gbBytes12, gbBytes13, gbBytes14,
+			gbBytes15, gbBytes16, gbBytes17:
+			n := int(tag - gbBytes00)
+			if len(b) < n+1 {
+				goto corrupted
+			}
+
+			scalars = append(scalars, append([]byte(nil), b[1:n+1]...))
+			b = b[n+1:]
 		case gbBytes1:
 			if len(b) < 2 {
 				goto corrupted
@@ -318,6 +377,17 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 
 			scalars = append(scalars, append([]byte(nil), b[:n]...))
 			b = b[n:]
+		case gbString00, gbString01, gbString02, gbString03, gbString04,
+			gbString05, gbString06, gbString07, gbString08, gbString09,
+			gbString10, gbString11, gbString12, gbString13, gbString14,
+			gbString15, gbString16, gbString17:
+			n := int(tag - gbString00)
+			if len(b) < n+1 {
+				goto corrupted
+			}
+
+			scalars = append(scalars, string(b[1:n+1]))
+			b = b[n+1:]
 		case gbString1:
 			if len(b) < 2 {
 				goto corrupted
