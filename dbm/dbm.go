@@ -23,14 +23,14 @@ const (
 	fCacheSize = 500
 	sCacheSize = 50
 
-	rname        = "2remove" // Array shredder
+	rname        = "2remove" // Array shredder queue
 	arraysPrefix = 'A'
 	filesPrefix  = 'F'
 	systemPrefix = 'S'
 )
 
 var (
-	compress = true // Curious developer hooks
+	compress = true // Dev hook
 )
 
 type DB struct {

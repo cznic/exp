@@ -21,7 +21,7 @@ import (
 var (
 	allocRndTestLimit     = flag.Uint("lim", 2*maxShort, "Allocator rnd test initial blocks size limit")
 	allocRndTestHardLimit = flag.Uint("hlim", 0, "Allocator rnd test initial blocks size hard limit")
-	testN                 = flag.Int("N", 1024, "Allocator rnd test block count, BTree tests N")
+	testN                 = flag.Int("N", 128, "Allocator rnd test block count")
 	allocRndDump          = flag.Bool("dump", false, "Produce dump files on TestAllocatorRnd crash")
 	oKeep                 = flag.Bool("keep", false, "do not delete testing DB/WAL (where applicable)")
 )

@@ -14,7 +14,7 @@ import (
 	"os"
 )
 
-var _ Filer = &ACIDFiler0{}
+var _ Filer = &ACIDFiler0{} // Ensure ACIDFiler0 is a Filer
 
 type acidWriter0 ACIDFiler0
 
@@ -79,6 +79,14 @@ const (
 // single write ahead log file to provide the structural atomicity
 // (BeginUpdate/EndUpdate/Rollback) and durability (DB can be recovered from
 // WAL if a crash occurred).
+//
+// ACIDFiler0 is a Filer.
+//
+// NOTE: Durable synchronous 2PC involves three fsyncs in this implementation
+// (WAL, DB, zero truncated WAL).  Where possible, it's recommended to collect
+// transactions for, say one second before performing the two phase commit as
+// the typical performance for rotational hard disks is about few tens of
+// fsyncs per second atmost.
 type ACIDFiler0 struct {
 	*RollbackFiler
 	db       Filer
@@ -90,7 +98,7 @@ type ACIDFiler0 struct {
 
 // NewACIDFiler0 returns a  newly created ACIDFiler0 with WAL in wal.
 //
-// If the WAL if zero sized then a previous clean shutdown of db is taken for
+// If the WAL is zero sized then a previous clean shutdown of db is taken for
 // granted and no recovery procedure is taken.
 //
 // If the WAL is of non zero size then it is checked for having a

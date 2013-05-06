@@ -12,7 +12,7 @@
 // The Filer
 //
 // A Filer is an abstraction of storage. A Filer may be a part of some process'
-// virtal address space, an OS file, a networked, remote file etc. Persistency
+// virtual address space, an OS file, a networked, remote file etc. Persistence
 // of the storage is optional, opaque to VMM and it is specific to a concrete
 // Filer implementation.
 //

@@ -25,13 +25,17 @@ Packet definitions
 		typ:	Must be zero (ACIDFiler0 file).
 		s:	Any comment string, empty string is okay.
 
-		This packet must be present as the first packet of a WAL file.
+		This packet must be present only once - as the first packet of
+		a WAL file.
 
 	{wpt00WriteData int, b []byte, off int64}
 		Write data (WriteAt(b, off)).
 
 	{wpt00Checkpoint int, sz int64}
 		Checkpoint (Truncate(sz)).
+
+		This packet must be present only once - as the last packet of
+		a WAL file.
 
 */
 
