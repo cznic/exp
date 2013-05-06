@@ -33,12 +33,8 @@ const (
 
 // Test hooks
 var (
-<<<<<<< HEAD
-	compress = true // Dev hook
-=======
-	compress      = true
+	compress      = true // Dev hook
 	activeVictors int32
->>>>>>> d816729e9c2cc7058f9dd5a273af05c053295327
 )
 
 const (

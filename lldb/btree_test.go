@@ -245,7 +245,7 @@ func testBTreePut1(t *testing.T, nf func() btreeStore, grow, from, to, xor int64
 var xors = [...]int64{0, 0xffffffff, 0x55555555, 0xaaaaaaaa}
 
 func TestBTreePutGetExtract(t *testing.T) {
-	N := int64(3*kData)
+	N := int64(3 * kData)
 	from := int64(*testFrom)
 
 	for grow := 0; grow < 2; grow++ {
