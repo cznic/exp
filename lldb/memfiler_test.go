@@ -96,8 +96,8 @@ func TestMemFilerWriteTo(t *testing.T) {
 
 func TestMemFilerReadFromWriteTo(t *testing.T) {
 	const (
-		sz   = 1e3 * pgSize
-		hole = 1e2 * pgSize
+		sz   = 1e2 * pgSize
+		hole = 1e1 * pgSize
 	)
 	rng := rand.New(rand.NewSource(42))
 	data := make([]byte, sz)

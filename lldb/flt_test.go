@@ -72,7 +72,7 @@ func TestNewFLTAllocator(t *testing.T) {
 			case i == maxRq:
 				break loop
 			default:
-				i += 16
+				i += 3 * 16
 			}
 
 			i = mathutil.Min(i, maxRq)

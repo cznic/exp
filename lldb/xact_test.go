@@ -269,7 +269,7 @@ func TestRollbackFiler4(t *testing.T) {
 		maxSize    = 1e6
 		maxChange  = maxSize/100 + 4
 		maxChanges = 10
-		maxNest    = 10
+		maxNest    = 3
 	)
 
 	var r *RollbackFiler

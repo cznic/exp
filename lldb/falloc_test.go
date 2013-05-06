@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cznic/sortutil"
 )
@@ -1423,6 +1424,7 @@ func BenchmarkAllocatorRndFreeMemFiler1e3(b *testing.B) {
 
 func benchmarkAllocatorRndFreeSimpleFileFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
+	<-time.After(5 * time.Second)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
@@ -1454,6 +1456,7 @@ func BenchmarkAllocatorRndFreeSimpleFileFiler1e3(b *testing.B) {
 
 func benchmarkAllocatorRndFreeRollbackFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
+	<-time.After(5 * time.Second)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
@@ -1508,6 +1511,7 @@ func BenchmarkAllocatorRndFreeRollbackFiler1e3(b *testing.B) {
 func benchmarkAllocatorRndFreeACIDFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
 	os.Remove(walName)
+	<-time.After(5 * time.Second)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
@@ -1638,6 +1642,7 @@ func BenchmarkAllocatorRndGetMemFiler1e3(b *testing.B) {
 
 func benchmarkAllocatorRndGetSimpleFileFiler(b *testing.B, sz int) {
 	os.Remove(testDbName)
+	<-time.After(5 * time.Second)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)

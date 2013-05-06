@@ -659,8 +659,8 @@ func BenchmarkMemFilerWrRand(b *testing.B) {
 
 	var ofs, runs []int
 	for i := 0; i < b.N; i++ {
-		ofs = append(ofs, rng.Intn(1<<31))
-		runs = append(runs, rng.Intn(1<<31)%(2*pgSize))
+		ofs = append(ofs, rng.Intn(1<<31-1))
+		runs = append(runs, rng.Intn(1<<31-1)%(2*pgSize))
 	}
 	data := make([]byte, 2*pgSize)
 	for i := range data {
@@ -686,8 +686,8 @@ func BenchmarkMemFilerRdRand(b *testing.B) {
 
 	var ofs, runs []int
 	for i := 0; i < b.N; i++ {
-		ofs = append(ofs, rng.Intn(1<<31))
-		runs = append(runs, rng.Intn(1<<31)%(2*pgSize))
+		ofs = append(ofs, rng.Intn(1<<31-1))
+		runs = append(runs, rng.Intn(1<<31-1)%(2*pgSize))
 	}
 	data := make([]byte, 2*pgSize)
 	for i := range data {
