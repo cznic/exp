@@ -120,9 +120,3 @@ func (f *SimpleFileFiler) WriteAt(b []byte, off int64) (n int, err error) {
 	f.size = mathutil.MaxInt64(f.size, int64(len(b))+off)
 	return f.file.WriteAt(b, off)
 }
-
-// FileFiler is a SimpleFileFiler wrapped in a RollbackFiler.
-type FileFiler struct {
-	File  *os.File
-	Filer *SimpleFileFiler
-}

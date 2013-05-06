@@ -7,9 +7,23 @@
 // intersection of models listed in [1]. As a settled term is lacking, it'll be
 // called here a 'Virtual memory model' (VMM).
 //
+// Experimental release notes
+//
+// This is an experimental release.  Don't open a DB from two applications or
+// two instances of an application - it will get corrupted (no file locking is
+// implemented). Don't do that even when in "read only" mode - it may get
+// corrupted anyway, because reading from the DB may actually cause writing to
+// it.  Some internal structures are rebuilt lazily and there's no option yet
+// for a true read only mode (but it's planned).
+//
+// Support for Go 1.0.3 was not tested and is not planned. IOW, you must use Go
+// tip. lldb's target is Go 1.1.
+//
+// Only few attempts to profile and/or improve performance were made (TODO).
+//
 // WARNING: THE LLDB API IS SUBJECT TO CHANGE.
 //
-// The Filer
+// Filers
 //
 // A Filer is an abstraction of storage. A Filer may be a part of some process'
 // virtual address space, an OS file, a networked, remote file etc. Persistence
@@ -22,7 +36,7 @@
 // the unused) contiguous parts of a Filer, called blocks.  Blocks are
 // identified and referred to by a handle, an int64.
 //
-// The Btrees
+// Btrees
 //
 // In addition to the VMM like services, lldb provides volatile and
 // non-volatile BTrees. Keys and values of a BTree are limited in size to 64kB
@@ -51,6 +65,21 @@
 // 64kB.  Bigger semantic entities/structures must be built in VMM's client
 // code.  The content of a block has no semantics attached, it's only a fully
 // opaque `[]byte`.
+//
+// Scalars
+//
+// Use of "scalars" applies to EncodeScalars, DecodeScalars and Collate. Those
+// first two "to bytes" and "from bytes" functions are suggested for handling
+// multi-valued Allocator content items and/or keys/values of BTrees (using
+// Collate for keys). Types called "scalar" are:
+//
+//	nil (the typeless one)
+//	bool
+//	all integral types: [u]int8, [u]int16, [u]int32, [u]int, [u]int64
+//	all floating point types: float32, float64
+//	all complex types: complex64, complex128
+//	[]byte (64kB max)
+//	string (64kb max)
 //
 // Specific implementations
 //

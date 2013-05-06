@@ -88,7 +88,10 @@ const (
 // (WAL, DB, zero truncated WAL).  Where possible, it's recommended to collect
 // transactions for, say one second before performing the two phase commit as
 // the typical performance for rotational hard disks is about few tens of
-// fsyncs per second atmost.
+// fsyncs per second atmost. For an example of such collective transaction
+// approach please see the colecting FSM STT in DBM[1].
+//
+//  [1]: http://godoc.org/github.com/cznic/exp/dbm
 type ACIDFiler0 struct {
 	*RollbackFiler
 	db       Filer

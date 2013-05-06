@@ -21,12 +21,14 @@ Some internal structures are rebuilt lazily and there's no option yet for a
 true read only mode (but it's planned).
 
 Key collating respecting client supplied locale is not yet implemented. Planned
-when exp/locale materializes.
+when exp/locale materializes. Because of this, the dbm API doesn't yet allow
+to really define other than default collating of keys. At least some sort
+of client defined collating will be incorporated after Go 1.1 release.
 
 Support for Go 1.0.3 was not tested and is not planned. IOW, you must
 use Go tip. Dbm's target is Go 1.1.
 
-No serious attempts to profile and/or improve performance were made.
+No serious attempts to profile and/or improve performance were made (TODO).
 
 	WARNING: THE DBM API IS SUBJECT TO CHANGE.
 	WARNING: THE DBM FILE FORMAT IS SUBJECT TO CHANGE.
@@ -50,6 +52,25 @@ within a structural transaction may corrupt the DB.
 
 Also please note that passing racy arguments to an otherwise concurrent safe
 API makes that API act racy as well.
+
+Scalars
+
+Keys and values of an Array are multi-valued and every value must be a
+"scalar". Types called "scalar" are:
+
+     nil (the typeless one)
+     bool
+     all integral types: [u]int8, [u]int16, [u]int32, [u]int, [u]int64
+     all floating point types: float32, float64
+     all complex types: complex64, complex128
+     []byte (64kB max)
+     string (64kb max)
+
+Collating
+
+Values in an Array are always ordered in the collating order of the respective
+keys. For details about the collating order please see lldb.Collate. There's a
+plan for mechanism respecting user-supplied locale applied to string collating.
 
 Multidimensional sparse arrays
 
@@ -232,6 +253,51 @@ Access denied errors
 Attemtps to mutate Arrays or Files or any other forbidden action return
 lldb.ErrPERM.
 
+ACID Finite State Machine
+
+For Options.ACID == ACIDFull and GracePeriod != 0 the state transition table
+for transaction collecting is:
+
+	+------------+-----------------+---------------+-----------------+
+	|\  Event    |                 |               |                 |
+	| \--------\ |     enter       |     leave     |     timeout     |
+	|   State   \|                 |               |                 |
+	+------------+-----------------+---------------+-----------------+
+	| idle       | BeginUpdate     | panic         | panic           |
+	|            | nest = 1        |               |                 |
+	|            | start timer     |               |                 |
+	|            | S = collecting  |               |                 |
+	+------------+-----------------+---------------+-----------------+
+	| collecting | nest++          | nest--        | S = collecting- |
+	|            |                 | if nest == 0  |     triggered   |
+	|            |                 |     S = idle- |                 |
+	|            |                 |         armed |                 |
+	+------------+-----------------+---------------+-----------------+
+	| idle-      | nest = 1        | panic         | EndUpdate       |
+	| aremd      | S = collecting- |               | S = idle        |
+	|            |     armed       |               |                 |
+	+------------+-----------------+---------------+-----------------+
+	| collecting-| nest++          | nest--        | S = collecting- |
+	| armed      |                 | if nest == 0  |     triggered   |
+	|            |                 |     S = idle- |                 |
+	|            |                 |         armed |                 |
+	+------------+-----------------+---------------+-----------------+
+	| collecting-| nest++          | nest--        | panic           |
+	| triggered  |                 | if nest == 0  |                 |
+	|            |                 |     EndUpdate |                 |
+	|            |                 |     S = idle  |                 |
+	+------------+-----------------+---------------+-----------------+
+
+	'enter': Invoking any DB state mutating operation.
+	'leave': Returning from any DB state mutating operation.
+
+NOTE: The collecting "interval" can be modified by invoking db.BeginUpdate and
+db.EndUpdate.
+
+References
+
+Links fom the above godocs.
+
   [1]: http://en.wikipedia.org/wiki/Hierarchical_database_model
   [2]: http://en.wikipedia.org/wiki/NoSQL#Key.E2.80.93value_store
   [3]: http://en.wikipedia.org/wiki/MUMPS
@@ -241,39 +307,3 @@ lldb.ErrPERM.
 
 */
 package dbm
-
-/*
-
-ACID GracePeriod != 0 FSM STT
-
-+------------+-----------------+---------------+-----------------+
-|\  Event    |                 |               |                 |
-| \--------\ |     enter       |     leave     |     timeout     |
-|   State   \|                 |               |                 |
-+------------+-----------------+---------------+-----------------+
-| idle       | BeginUpdate     | panic         | panic           |
-|            | nest = 1        |               |                 |
-|            | start timer     |               |                 |
-|            | S = collecting  |               |                 |
-+------------+-----------------+---------------+-----------------+
-| collecting | nest++          | nest--        | S = collecting- |
-|            |                 | if nest == 0  |     triggered   |
-|            |                 |     S = idle- |                 |
-|            |                 |         armed |                 |
-+------------+-----------------+---------------+-----------------+
-| idle-      | nest = 1        | panic         | EndUpdate       |
-| aremd      | S = collecting- |               | S = idle        |
-|            |     armed       |               |                 |
-+------------+-----------------+---------------+-----------------+
-| collecting-| nest++          | nest--        | S = collecting- |
-| armed      |                 | if nest == 0  |     triggered   |
-|            |                 |     S = idle- |                 |
-|            |                 |         armed |                 |
-+------------+-----------------+---------------+-----------------+
-| collecting-| nest++          | nest--        | panic           |
-| triggered  |                 | if nest == 0  |                 |
-|            |                 |     EndUpdate |                 |
-|            |                 |     S = idle  |                 |
-+------------+-----------------+---------------+-----------------+
-
-*/

@@ -7,6 +7,10 @@ package dbm
 //DONE +Top level Sync? Optional? (Measure it)
 //	Too slow. Added db.Sync() instead.
 
+//TODO user defined collating
+//	- on DB create (sets the default)
+//	- per Array? (probably a MUST HAVE feature)
+
 import (
 	"fmt"
 	"io/ioutil"
