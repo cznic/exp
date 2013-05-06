@@ -1811,7 +1811,7 @@ func TestInc1(t *testing.T) {
 	const (
 		M = 3
 	)
-	N := 10000
+	N := 1000
 	if *oACIDEnableWAL {
 		N = 20
 	}
@@ -1849,7 +1849,7 @@ func TestInc1(t *testing.T) {
 	total := int64(0)
 	for i := 0; i < M; i++ {
 		select {
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Second * 20):
 			t.Error("timeouted")
 			return
 		case v := <-c:
