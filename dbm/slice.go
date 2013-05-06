@@ -45,6 +45,10 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 		return err
 	}
 
+	if s.a.tree == nil {
+		return
+	}
+
 	if t := s.a.tree; !t.IsMem() && t.Handle() == 1 {
 		noVal = true
 	}

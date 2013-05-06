@@ -3,3 +3,14 @@
 // license that can be found in the LICENSE file.
 
 package lldb
+
+import (
+	"time"
+)
+
+const (
+	testDbName = "_test.db"
+	walName    = "_wal"
+)
+
+func now() time.Time { return time.Now() }

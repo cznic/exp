@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/cznic/mathutil"
 )
 
 var _ Filer = &ACIDFiler0{} // Ensure ACIDFiler0 is a Filer
@@ -93,7 +95,8 @@ type ACIDFiler0 struct {
 	wal      *os.File
 	bwal     *bufio.Writer
 	data     *BTree
-	testHook bool // keeps WAL untruncated (once)
+	testHook bool  // keeps WAL untruncated (once)
+	peakWal  int64 // Tracks WAL maximum used size
 }
 
 // NewACIDFiler0 returns a  newly created ACIDFiler0 with WAL in wal.
@@ -148,6 +151,14 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 				return
 			}
 
+			wfi, err := r.wal.Stat()
+			switch err != nil {
+			case true:
+				// unexpected, but ignored
+			case false:
+				r.peakWal = mathutil.MaxInt64(wfi.Size(), r.peakWal)
+			}
+
 			// Phase 1 commit complete
 
 			enum, err := r.data.SeekFirst()
@@ -192,6 +203,10 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 				if err = r.wal.Truncate(0); err != nil {
 					return
 				}
+
+				if _, err = r.wal.Seek(0, 0); err != nil {
+					return
+				}
 			}
 
 			r.testHook = false
@@ -204,6 +219,11 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 	}
 
 	return r, nil
+}
+
+// PeakWALSize reports the maximum size WAL has ever used.
+func (a ACIDFiler0) PeakWALSize() int64 {
+	return a.peakWal
 }
 
 func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error) {
@@ -227,7 +247,7 @@ func (a *ACIDFiler0) readPacket(f *bufio.Reader) (items []interface{}, err error
 func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 	fi, err := a.wal.Stat()
 	if err != nil {
-		return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+		return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: err}
 	}
 
 	if fi.Size()%16 != 0 {
@@ -241,7 +261,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 	}
 
 	if len(items) != 3 || items[0] != int64(wpt00Header) || items[1] != int64(walTypeACIDFiler0) {
-		return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+		return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("invalid packet items %#v", items)}
 	}
 
 	tr := NewBTree(nil)
@@ -253,13 +273,13 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		}
 
 		if len(items) < 2 {
-			return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+			return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("too few packet items %#v", items)}
 		}
 
 		switch items[0] {
 		case int64(wpt00WriteData):
 			if len(items) != 3 {
-				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("invalid data packet items %#v", items)}
 			}
 
 			b, off := items[1].([]byte), items[2].(int64)
@@ -271,11 +291,11 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 		case int64(wpt00Checkpoint):
 			var b1 [1]byte
 			if n, err := f.Read(b1[:]); n != 0 || err == nil {
-				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("checkpoint n %d, err %v", n, err)}
 			}
 
 			if len(items) != 2 {
-				return &ErrILSEQ{Type: ErrInvalidWAL, More: a.wal.Name()}
+				return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("checkpoint packet invalid items %#v", items)}
 			}
 
 			sz := items[1].(int64)
@@ -323,7 +343,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 
 			return a.wal.Sync()
 		default:
-			return &ErrILSEQ{Type: ErrInvalidWAL, More: fmt.Sprintf("%q: packet tag %v", a.wal.Name(), items[0])}
+			return &ErrILSEQ{Type: ErrInvalidWAL, Name: a.wal.Name(), More: fmt.Sprintf("packet tag %v", items[0])}
 		}
 	}
 }

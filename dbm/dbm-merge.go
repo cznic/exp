@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cznic/exp/lldb"
 )
@@ -29,27 +31,52 @@ const (
 	systemPrefix = 'S'
 )
 
+// Test hooks
 var (
+<<<<<<< HEAD
 	compress = true // Dev hook
+=======
+	compress      = true
+	activeVictors int32
+>>>>>>> d816729e9c2cc7058f9dd5a273af05c053295327
 )
 
+const (
+	stDisabled = iota // stDisabled must be zero
+	stIdle
+	stCollecting
+	stIdleArmed
+	stCollectingArmed
+	stCollectingTriggered
+)
+
+func init() {
+	if stDisabled != 0 {
+		panic("stDisabled != 0")
+	}
+}
+
 type DB struct {
-	_root      *Array          // Root directory, do not access directly
-	acache     treeCache       // Arrays cache
-	alloc      *lldb.Allocator // The machinery. Wraps filer
-	bkl        sync.Mutex      // Big Kernel Lock
-	closeMu    sync.Mutex      // Close() coordination
-	closed     bool            // it was
-	emptySize  int64           // Any header size including FLT.
-	f          *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
-	fcache     treeCache       // Files cache
-	filer      lldb.Filer      // Wraps f
-	removing   map[int64]bool  // BTrees being removed
-	removingMu sync.Mutex      // Remove() coordination
-	scache     treeCache       // System arrays cache
-	stop       chan int        // Remove() coordination
-	wg         sync.WaitGroup  // Remove() coordination
-	xact       bool            // Updates are made within automatic structural transactions
+	_root       *Array          // Root directory, do not access directly
+	acache      treeCache       // Arrays cache
+	acidNest    int             // Grace period nesting level
+	acidState   int             // Grace period FSM state.
+	acidTimer   *time.Timer     // Grace period timer
+	alloc       *lldb.Allocator // The machinery. Wraps filer
+	bkl         sync.Mutex      // Big Kernel Lock
+	closeMu     sync.Mutex      // Close() coordination
+	closed      bool            // it was
+	emptySize   int64           // Any header size including FLT.
+	f           *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
+	fcache      treeCache       // Files cache
+	filer       lldb.Filer      // Wraps f
+	gracePeriod time.Duration   // WAL grace period
+	removing    map[int64]bool  // BTrees being removed
+	removingMu  sync.Mutex      // Remove() coordination
+	scache      treeCache       // System arrays cache
+	stop        chan int        // Remove() coordination
+	wg          sync.WaitGroup  // Remove() coordination
+	xact        bool            // Updates are made within automatic structural transactions
 }
 
 // Create creates the named DB file mode 0666 (before umask). The file must not
@@ -77,14 +104,13 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}
 
-	if opts.ACID&ACIDDisableWAL == 0 {
-		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
-			return
-		}
+	db = &DB{emptySize: 128, f: f}
+
+	if filer, err = opts.acidFiler(db, filer); err != nil {
+		return nil, err
 	}
 
-	db = &DB{emptySize: 128, f: f, filer: filer}
-
+	db.filer = filer
 	if err = filer.BeginUpdate(); err != nil {
 		return
 	}
@@ -102,8 +128,6 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 	}
 
 	db.alloc.Compress = compress
-	db.xact = opts.ACID&ACIDDisableStructuralTransactions == 0
-
 	return
 }
 
@@ -150,12 +174,6 @@ func Open(name string, opts *Options) (db *DB, err error) {
 	}
 
 	filer := lldb.Filer(lldb.NewSimpleFileFiler(f))
-	if opts.ACID&ACIDDisableWAL == 0 {
-		if filer, err = lldb.NewACIDFiler(filer, opts.wal); err != nil {
-			return
-		}
-	}
-
 	sz, err := filer.Size()
 	if err != nil {
 		return
@@ -175,7 +193,12 @@ func Open(name string, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
 
-	db = &DB{f: f, filer: filer, xact: opts.ACID&ACIDDisableStructuralTransactions == 0}
+	db = &DB{f: f}
+	if filer, err = opts.acidFiler(db, filer); err != nil {
+		return nil, err
+	}
+
+	db.filer = filer
 	switch h.ver {
 	default:
 		return nil, &os.PathError{Op: "dbm.Open", Path: name, Err: fmt.Errorf("unknown dbm file format version %#x", h.ver)}
@@ -204,7 +227,20 @@ func (db *DB) Close() (err error) {
 	db.closeMu.Lock()
 	defer db.closeMu.Unlock()
 
-	e := db.leave(&err)
+	if db.acidTimer != nil {
+		db.acidTimer.Stop()
+	}
+
+	var e error
+	for db.acidNest > 0 {
+		db.acidNest--
+		if err := db.filer.EndUpdate(); err != nil {
+			e = err
+		}
+	}
+	err = e
+
+	e = db.leave(&err)
 	if err = db.close(); err == nil {
 		err = e
 	}
@@ -578,6 +614,7 @@ func (db *DB) boot() (err error) {
 }
 
 func (db *DB) victor(removes Array, h int64) {
+	atomic.AddInt32(&activeVictors, 1)
 	var err error
 	var finished bool
 	defer func() {
@@ -589,6 +626,7 @@ func (db *DB) victor(removes Array, h int64) {
 			db.leave(&err)
 		}
 		db.wg.Done()
+		atomic.AddInt32(&activeVictors, -1)
 	}()
 
 	db.enter()
@@ -663,6 +701,30 @@ func (db *DB) Files() (a Array, err error) {
 
 func (db *DB) enter() (err error) {
 	db.bkl.Lock()
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stDisabled:
+		// nop
+	case stIdle:
+		if err = db.filer.BeginUpdate(); err != nil {
+			return
+		}
+
+		db.acidNest = 1
+		db.acidTimer = time.AfterFunc(db.gracePeriod, db.timeout)
+		db.acidState = stCollecting
+	case stCollecting:
+		db.acidNest++
+	case stIdleArmed:
+		db.acidNest = 1
+		db.acidState = stCollectingArmed
+	case stCollectingArmed:
+		db.acidNest++
+	case stCollectingTriggered:
+		db.acidNest++
+	}
+
 	if db.xact {
 		err = db.filer.BeginUpdate()
 	}
@@ -670,6 +732,35 @@ func (db *DB) enter() (err error) {
 }
 
 func (db *DB) leave(err *error) error {
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stDisabled:
+		// nop
+	case stIdle:
+		panic("internal error")
+	case stCollecting:
+		db.acidNest--
+		if db.acidNest == 0 {
+			db.acidState = stIdleArmed
+		}
+	case stIdleArmed:
+		panic("internal error")
+	case stCollectingArmed:
+		db.acidNest--
+		if db.acidNest == 0 {
+			db.acidState = stIdleArmed
+		}
+	case stCollectingTriggered:
+		db.acidNest--
+		if db.acidNest == 0 {
+			if e := db.filer.EndUpdate(); e != nil && err == nil {
+				*err = e
+			}
+			db.acidState = stIdle
+		}
+	}
+
 	if db.xact {
 		switch {
 		case *err != nil:
@@ -682,9 +773,38 @@ func (db *DB) leave(err *error) error {
 	return *err
 }
 
+func (db *DB) timeout() {
+	db.bkl.Lock()
+	defer db.bkl.Unlock()
+
+	if db.closed {
+		return
+	}
+
+	switch db.acidState {
+	default:
+		panic("internal error")
+	case stIdle:
+		panic("internal error")
+	case stCollecting:
+		db.acidState = stCollectingTriggered
+	case stIdleArmed:
+		db.filer.EndUpdate() //TODO+ async error reporting (poll in leave()?)
+		//TODO? Rollback after EndUpdate fails?
+		db.acidState = stIdle
+	case stCollectingArmed:
+		db.acidState = stCollectingTriggered
+	case stCollectingTriggered:
+		panic("internal error")
+	}
+}
+
 // Sync commits the current contents of the DB file to stable storage.
 // Typically, this means flushing the file system's in-memory copy of recently
 // written data to disk.
+//
+// NOTE: There's no good reason to invoke Sync if db uses 2PC/WAL (see
+// Options.ACID).
 func (db *DB) Sync() (err error) {
 	if err = db.enter(); err != nil {
 		return
@@ -727,4 +847,92 @@ func (db *DB) Inc(delta int64, array string, subscripts ...interface{}) (val int
 	}
 
 	return a.inc(delta)
+}
+
+// BeginUpdate increments a "nesting" counter (initially zero). Every
+// call to BeginUpdate must be eventually "balanced" by exactly one of
+// EndUpdate or Rollback. Calls to BeginUpdate may nest.
+func (db *DB) BeginUpdate() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.BeginUpdate()
+}
+
+// EndUpdate decrements the "nesting" counter. If it's zero after that then
+// assume the "storage" has reached structural integrity (after a batch of
+// partial updates). Invocation of an unbalanced EndUpdate is an error.
+func (db *DB) EndUpdate() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.EndUpdate()
+}
+
+// Rollback cancels and undoes the innermost pending update level (if
+// transactions are eanbled).  Rollback decrements the "nesting" counter.
+// Invocation of an unbalanced Rollback is an error.
+func (db *DB) Rollback() (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.filer.Rollback()
+}
+
+// Verify attempts to find any structural errors in DB wrt the
+// organization of it as defined by lldb.Allocator. 'bitmap' is a scratch pad for
+// necessary bookkeeping and will grow to at most to DB size/128 (0,78%). Any problems found are reported to 'log' except
+// non verify related errors like disk read fails etc. If 'log' returns false
+// or the error doesn't allow to (reliably) continue, the verification process
+// is stopped and an error is returned from the Verify function. Passing a nil
+// log works like providing a log function always returning false. Any
+// non-structural errors, like for instance Filer read errors, are NOT reported
+// to 'log', but returned as the Verify's return value, because Verify cannot
+// proceed in such cases. Verify returns nil only if it fully completed
+// verifying DB without detecting any error.
+//
+// It is recommended to limit the number reported problems by returning false
+// from 'log' after reaching some limit. Huge and corrupted DB can produce an
+// overwhelming error report dataset.
+//
+// The verifying process will scan the whole DB at least 3 times (a trade
+// between processing space and time consumed). It doesn't read the content of
+// free blocks above the head/tail info bytes. If the 3rd phase detects lost
+// free space, then a 4th scan (a faster one) is performed to precisely report
+// all of them.
+//
+// If the DB to be verified is reasonably small, respective if its
+// size/128 can comfortably fit within process's free memory, then it is
+// recommended to consider using a lldb.MemFiler for the bit map.
+//
+// Statistics are returned via 'stats' if non nil. The statistics are valid
+// only if Verify succeeded, ie. it didn't reported anything to log and it
+// returned a nil error.
+func (db *DB) Verify(bitmap lldb.Filer, log func(error) bool, stats *lldb.AllocStats) (err error) {
+	if err = db.enter(); err != nil {
+		return
+	}
+
+	defer db.leave(&err)
+
+	return db.alloc.Verify(bitmap, log, stats)
+}
+
+// PeakWALSize reports the maximum size WAL has ever used.
+func (db *DB) PeakWALSize() int64 {
+	af, ok := db.filer.(*lldb.ACIDFiler0)
+	if !ok {
+		return 0
+	}
+
+	return af.PeakWALSize()
 }

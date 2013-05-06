@@ -4,6 +4,10 @@
 
 package dbm
 
+//DONE 2012-04-24 15:56 go test -race -cpu 4 -bench .
+//DONE 2012-04-24 16:05 go test -race -cpu 4 -bench . -xact
+//DONE 2012-04-24 16:25 go test -race -cpu 4 -bench . -wall
+
 import (
 	"bytes"
 	"encoding/hex"
@@ -16,6 +20,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,9 +30,10 @@ import (
 var (
 	oKeep           = flag.Bool("keep", false, "do not delete testing DB (where applicable)")
 	oNoZip          = flag.Bool("nozip", false, "disable compression")
-	oMemBench       = flag.Bool("membench", false, "perform benchmarks on memory DBs")
 	oACIDEnableWAL  = flag.Bool("wal", false, "enable WAL")
 	oACIDEnableXACT = flag.Bool("xact", false, "enable structural transactions")
+	oACIDGrace      = flag.Duration("grace", time.Second, "Grace period for -wal")
+	oBench          = flag.Bool("tbench", false, "enable (long) TestBench* tests")
 )
 
 // Bench knobs.
@@ -39,11 +45,12 @@ const (
 func init() {
 	flag.Parse()
 	compress = !*oNoZip
-	if *oACIDEnableWAL {
-		o.ACID &^= ACIDDisableWAL
-	}
 	if *oACIDEnableXACT {
-		o.ACID &^= ACIDDisableStructuralTransactions
+		o.ACID = ACIDTransactions
+	}
+	if *oACIDEnableWAL {
+		o.ACID = ACIDFull
+		o.GracePeriod = *oACIDGrace
 	}
 }
 
@@ -67,17 +74,28 @@ func os_exit(n int) {
 
 const dbname = "test.db"
 
-var o = &Options{ACID: ACIDDisableWAL | ACIDDisableStructuralTransactions}
+var o = &Options{}
 
-func preRemove(dbname string) (err error) {
+func preRemove(dbname string, wal bool) (err error) {
 	os.Remove(dbname)
 	o := Options{}
-	os.Remove(o.walName(dbname, ""))
+	wn := o.walName(dbname, "")
+	switch wal {
+	case false:
+		os.Remove(wn)
+	case true:
+		f, err := os.Create(wn)
+		if err != nil {
+			return err
+		}
+
+		return f.Close()
+	}
 	return nil
 }
 
 func Test0(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -85,7 +103,7 @@ func Test0(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	if err = db.Close(); err != nil {
@@ -188,10 +206,10 @@ func Test0(t *testing.T) {
 func TestSet0(t *testing.T) {
 	N := 4000
 	if *oACIDEnableWAL {
-		N = 50
+		N = 4000
 	}
 
-	preRemove(dbname)
+	preRemove(dbname, false)
 	rng := rand.New(rand.NewSource(42))
 	ref := map[int]int{}
 
@@ -201,7 +219,7 @@ func TestSet0(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	for i := 0; i < N; i++ {
@@ -247,7 +265,7 @@ func TestSet0(t *testing.T) {
 }
 
 func TestDocEx(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -255,7 +273,7 @@ func TestDocEx(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	var g, e interface{}
@@ -1018,28 +1036,25 @@ func TestClear(t *testing.T) {
 }
 
 func BenchmarkClear(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, true)
+
+	db, err := Create(dbname, &Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	ref := map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
@@ -1047,33 +1062,51 @@ func BenchmarkClear(b *testing.B) {
 	for i := range ref {
 		a.Set(i, i)
 	}
-	b.StartTimer()
+	if err := db.Close(); err != nil {
+		b.Fatal(err)
+		return
+	}
+
+	db2, err := Open(dbname, o)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	defer db2.Close()
+
+	a, err = db2.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	runtime.GC()
+	b.ResetTimer()
 	a.Clear()
+	b.StopTimer()
 }
 
 func BenchmarkDelete(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, true)
+
+	db, err := Create(dbname, &Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	ref := map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
@@ -1085,111 +1118,140 @@ func BenchmarkDelete(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
 	}
-	b.StartTimer()
+	if err := db.Close(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	db2, err := Open(dbname, o)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	defer db2.Close()
+
+	a, err = db2.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	runtime.GC()
+	b.ResetTimer()
 	for i := range ref {
 		a.Delete(i)
 	}
+	b.StopTimer()
 }
 
 func BenchmarkGet(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, true)
+
+	db, err := Create(dbname, &Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	ref := map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
 	}
-	var xact bool
-	xact, db.xact = db.xact, false
-	for i := range ref {
-		a.Set(i, i)
-	}
-	db.xact = xact
 	ref = map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
 	}
-	b.StartTimer()
+	if err := db.Close(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	db2, err := Open(dbname, o)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	defer db2.Close()
+
+	a, err = db2.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	runtime.GC()
+	b.ResetTimer()
 	for i := range ref {
 		a.Get(i)
 	}
+	b.StopTimer()
 }
 
 func BenchmarkSet(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, false)
+
+	db, err := Create(dbname, o)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	ref := map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
 	}
-	b.StartTimer()
+	runtime.GC()
+	b.ResetTimer()
 	for i := range ref {
 		a.Set(i, i)
 	}
+	b.StopTimer()
 }
 
 func BenchmarkDo(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, true)
+
+	db, err := Create(dbname, &Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	ref := map[int]struct{}{}
 	for i := 0; i < b.N; i++ {
 		ref[i] = struct{}{}
@@ -1197,30 +1259,41 @@ func BenchmarkDo(b *testing.B) {
 	for i := range ref {
 		a.Set(i, i)
 	}
+	if err := db.Close(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	db2, err := Open(dbname, o)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	a, err = db2.Array("test")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	s, err := a.Slice(nil, nil)
 	if err != nil {
 		b.Error(err)
 		return
 	}
 
-	b.StartTimer()
+	runtime.GC()
+	b.ResetTimer()
 	s.Do(func(subscripts, value []interface{}) (bool, error) {
 		return true, nil
 	})
-}
-
-func testDB() (db *DB, err error) {
-	if *oMemBench {
-		return CreateMem(o)
-	}
-
-	return CreateTemp("", "dbm-bench", o)
+	b.StopTimer()
 }
 
 func TestRemoveArray0(t *testing.T) {
 	const aname = "TestRemoveArray0"
 
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1228,7 +1301,7 @@ func TestRemoveArray0(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	err = db.Set(42, aname, 1, 2)
@@ -1249,8 +1322,19 @@ func TestRemoveArray0(t *testing.T) {
 		return
 	}
 
+	if err = db.enter(); err != nil {
+		t.Error(err)
+		return
+	}
+
 	tr, err := db.acache.getTree(db, arraysPrefix, aname, false, aCacheSize)
 	if err != nil {
+		db.leave(&err)
+		t.Error(err)
+		return
+	}
+
+	if err = db.leave(&err); err != nil {
 		t.Error(err)
 		return
 	}
@@ -1270,6 +1354,18 @@ func TestRemoveArray0(t *testing.T) {
 		return
 	}
 
+	for {
+		<-time.After(time.Second)
+		if atomic.LoadInt32(&activeVictors) == 0 {
+			break
+		}
+	}
+
+	if err := db.BeginUpdate(); err != nil {
+		t.Error(err)
+		return
+	}
+
 	err = db.alloc.Verify(
 		lldb.NewMemFiler(),
 		func(err error) bool {
@@ -1278,7 +1374,13 @@ func TestRemoveArray0(t *testing.T) {
 		},
 		nil,
 	)
+
 	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if err := db.EndUpdate(); err != nil {
 		t.Error(err)
 		return
 	}
@@ -1339,7 +1441,7 @@ func (db *DB) dumpAll(w io.Writer, msg string) {
 func TestRemoveFile0(t *testing.T) {
 	const fname = "TestRemoveFile0"
 
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1347,7 +1449,7 @@ func TestRemoveFile0(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File(fname)
@@ -1399,7 +1501,7 @@ func TestRemove1(t *testing.T) {
 	)
 
 	compress = false // Test may correctly fail w/ compression.
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1407,7 +1509,7 @@ func TestRemove1(t *testing.T) {
 	}
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	sz0, err := db.Size()
@@ -1520,7 +1622,7 @@ func enumStrKeys(a Array) (k []string, err error) {
 }
 
 func TestArrays(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1530,7 +1632,7 @@ func TestArrays(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	a, err := db.Arrays()
@@ -1579,7 +1681,7 @@ func TestArrays(t *testing.T) {
 }
 
 func TestFiles(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1589,7 +1691,7 @@ func TestFiles(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	a, err := db.Files()
@@ -1644,7 +1746,7 @@ func TestFiles(t *testing.T) {
 }
 
 func TestInc0(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1654,7 +1756,7 @@ func TestInc0(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	db.Set(10, "TestInc", "ten")
@@ -1714,7 +1816,7 @@ func TestInc1(t *testing.T) {
 		N = 20
 	}
 
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1724,7 +1826,7 @@ func TestInc1(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	runtime.GOMAXPROCS(M)
@@ -1763,36 +1865,35 @@ func TestInc1(t *testing.T) {
 }
 
 func BenchmarkInc(b *testing.B) {
-	b.StopTimer()
-	db, err := testDB()
+	preRemove(dbname, false)
+
+	db, err := Create(dbname, o)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		if *oMemBench {
-			return
-		}
-		name := db.Name()
-		e1 := db.Close()
-		e2 := preRemove(name)
-		if e1 != nil {
-			b.Error(e1)
-		}
-		if e2 != nil {
-			b.Error(e2)
-		}
-	}()
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
 
 	a, err := db.Array("test")
-	b.StartTimer()
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	runtime.GC()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		a.Inc(279, 314)
 	}
+	b.StopTimer()
 }
 
 func TestFile0(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1802,7 +1903,7 @@ func TestFile0(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	a, err := db.Files()
@@ -1833,13 +1934,6 @@ func TestFile0(t *testing.T) {
 		return
 	}
 
-	d, err := dump(f.tree)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("\n%s", d)
-
 	names, err = enumStrKeys(a)
 	if err != nil {
 		t.Error(err)
@@ -1863,7 +1957,7 @@ func TestFile0(t *testing.T) {
 }
 
 func TestFileTruncate0(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1873,7 +1967,7 @@ func TestFileTruncate0(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestFileTruncate")
@@ -1940,7 +2034,7 @@ func TestFileTruncate0(t *testing.T) {
 }
 
 func TestFileReadAtWriteAt(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -1950,7 +2044,7 @@ func TestFileReadAtWriteAt(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestFileReadAtWriteAt")
@@ -2080,7 +2174,7 @@ func TestFileReadAtWriteAt(t *testing.T) {
 }
 
 func TestFileReadAtHole(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2090,7 +2184,7 @@ func TestFileReadAtHole(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestFileReadAtHole")
@@ -2123,9 +2217,7 @@ func TestFileReadAtHole(t *testing.T) {
 }
 
 func BenchmarkFileWrSeq(b *testing.B) {
-	b.StopTimer()
-
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2133,7 +2225,7 @@ func BenchmarkFileWrSeq(b *testing.B) {
 	}
 
 	defer db.Close()
-	defer preRemove(dbname)
+	defer preRemove(dbname, false)
 
 	buf := make([]byte, fileTestChunkSize)
 	for i := range buf {
@@ -2147,7 +2239,7 @@ func BenchmarkFileWrSeq(b *testing.B) {
 	}
 
 	runtime.GC()
-	b.StartTimer()
+	b.ResetTimer()
 	var ofs int64
 	for i := 0; i < b.N; i++ {
 		_, err := f.WriteAt(buf, ofs)
@@ -2157,20 +2249,19 @@ func BenchmarkFileWrSeq(b *testing.B) {
 
 		ofs = (ofs + fileTestChunkSize) % fileTotalSize
 	}
+	b.StopTimer()
 }
 
 func BenchmarkFileRdSeq(b *testing.B) {
-	b.StopTimer()
+	preRemove(dbname, true)
 
-	preRemove(dbname)
-
-	db, err := Create(dbname, o)
+	db, err := Create(dbname, &Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	defer db.Close()
-	defer preRemove(dbname)
+	defer preRemove(dbname, false)
 
 	buf := make([]byte, fileTestChunkSize)
 	for i := range buf {
@@ -2192,8 +2283,27 @@ func BenchmarkFileRdSeq(b *testing.B) {
 
 		ofs = (ofs + fileTestChunkSize) % fileTotalSize
 	}
+	if err := db.Close(); err != nil {
+		b.Fatal(err)
+		return
+	}
+
+	db2, err := Open(dbname, o)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	defer db2.Close()
+
+	f, err = db2.File("BenchmarkFileRdSeq")
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
 	runtime.GC()
-	b.StartTimer()
+	b.ResetTimer()
 	ofs = 0
 	for i := 0; i < b.N; i++ {
 		n, err := f.ReadAt(buf, ofs)
@@ -2203,6 +2313,7 @@ func BenchmarkFileRdSeq(b *testing.B) {
 
 		ofs = (ofs + fileTestChunkSize) % fileTotalSize
 	}
+	b.StopTimer()
 }
 
 func TestBits0(t *testing.T) {
@@ -2215,7 +2326,7 @@ func TestBits0(t *testing.T) {
 		N = 50
 	}
 
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2225,7 +2336,7 @@ func TestBits0(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestBits0")
@@ -2295,8 +2406,7 @@ func TestBits0(t *testing.T) {
 }
 
 func benchmarkBitsOn(b *testing.B, n uint64) {
-	b.StopTimer()
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2306,7 +2416,7 @@ func benchmarkBitsOn(b *testing.B, n uint64) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestBits0")
@@ -2323,13 +2433,14 @@ func benchmarkBitsOn(b *testing.B, n uint64) {
 		a[i] = uint64(rng.Int63())
 	}
 
-	b.StartTimer()
+	b.SetBytes(int64(n) / 8)
+	runtime.GC()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		bits.On(a[i&0xfffff], n)
 	}
 
 	b.StopTimer()
-	b.SetBytes(int64(n) / 8)
 }
 
 func BenchmarkBitsOn16(b *testing.B) {
@@ -2345,8 +2456,7 @@ func BenchmarkBitsOn65536(b *testing.B) {
 }
 
 func BenchmarkBitsGetSeq(b *testing.B) {
-	b.StopTimer()
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2356,7 +2466,7 @@ func BenchmarkBitsGetSeq(b *testing.B) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestBitsGetSeq")
@@ -2376,7 +2486,8 @@ func BenchmarkBitsGetSeq(b *testing.B) {
 	}
 
 	bits := f.Bits()
-	b.StartTimer()
+	runtime.GC()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		bits.Get(uint64(i) & 0x7fffff)
 	}
@@ -2384,8 +2495,7 @@ func BenchmarkBitsGetSeq(b *testing.B) {
 }
 
 func BenchmarkBitsGetRnd(b *testing.B) {
-	b.StopTimer()
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2395,7 +2505,7 @@ func BenchmarkBitsGetRnd(b *testing.B) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	f, err := db.File("TestBitsGetRnd")
@@ -2421,7 +2531,8 @@ func BenchmarkBitsGetRnd(b *testing.B) {
 		a[i] = uint64(rng.Int63() & 0x7fffff)
 	}
 
-	b.StartTimer()
+	runtime.GC()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		bits.Get(a[i&0xfffff])
 	}
@@ -2429,7 +2540,7 @@ func BenchmarkBitsGetRnd(b *testing.B) {
 }
 
 func TestTmpDirRemoval(t *testing.T) {
-	preRemove(dbname)
+	preRemove(dbname, false)
 
 	db, err := Create(dbname, o)
 	if err != nil {
@@ -2439,7 +2550,7 @@ func TestTmpDirRemoval(t *testing.T) {
 	defer db.Close()
 
 	if !*oKeep {
-		defer preRemove(dbname)
+		defer preRemove(dbname, false)
 	}
 
 	names := []string{"b", "/b", "/b/", "tmp", "/tmp", "/tmp/", "/tmp/foo", "z", "/z", "/z/"}
@@ -2540,4 +2651,159 @@ func TestTmpDirRemoval(t *testing.T) {
 		}
 	}
 
+}
+
+/*
+
+2013-04-25
+==========
+
+(15:54) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$ . bench
+++ go test -v -run Bench -keep -tbench -cpu 4
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (114.30 seconds)
+	all_test.go:2820: WR: 51580 ops in 6.000e+01 s, 8.597e+02 ops/s, 1.163e-03 s/op
+	all_test.go:2869: RD: 51580 ops in 5.425e+01 s, 9.508e+02 ops/s, 1.052e-03 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	114.311s
+++ go test -v -run Bench -keep -tbench -cpu 4 -xact
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (112.85 seconds)
+	all_test.go:2820: WR: 46338 ops in 6.000e+01 s, 7.723e+02 ops/s, 1.295e-03 s/op
+	all_test.go:2869: RD: 46338 ops in 5.279e+01 s, 8.778e+02 ops/s, 1.139e-03 s/op
+PASS
+ok  	github.com/cznic/exp/dbm	112.859s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 0ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (60.38 seconds)
+	all_test.go:2820: WR: 602 ops in 6.009e+01 s, 1.002e+01 ops/s, 9.982e-02 s/op, max WAL size 7056
+	all_test.go:2869: RD: 602 ops in 1.244e-01 s, 4.838e+03 ops/s, 2.067e-04 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	60.396s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (94.13 seconds)
+	all_test.go:2820: WR: 33664 ops in 6.003e+01 s, 5.608e+02 ops/s, 1.783e-03 s/op, max WAL size 37328
+	all_test.go:2869: RD: 33664 ops in 3.380e+01 s, 9.961e+02 ops/s, 1.004e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	94.140s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (99.36 seconds)
+	all_test.go:2820: WR: 37880 ops in 6.000e+01 s, 6.313e+02 ops/s, 1.584e-03 s/op, max WAL size 48224
+	all_test.go:2869: RD: 37880 ops in 3.916e+01 s, 9.673e+02 ops/s, 1.034e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	99.372s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 100ms
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (100.20 seconds)
+	all_test.go:2820: WR: 38464 ops in 6.018e+01 s, 6.392e+02 ops/s, 1.564e-03 s/op, max WAL size 46928
+	all_test.go:2869: RD: 38464 ops in 3.981e+01 s, 9.661e+02 ops/s, 1.035e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	100.213s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 1s
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (108.00 seconds)
+	all_test.go:2820: WR: 44508 ops in 6.000e+01 s, 7.418e+02 ops/s, 1.348e-03 s/op, max WAL size 57264
+	all_test.go:2869: RD: 44508 ops in 4.781e+01 s, 9.310e+02 ops/s, 1.074e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	108.016s
+++ go test -v -run Bench -keep -tbench -cpu 4 -wal -grace 10s
+=== RUN TestBenchArraySetGet-4
+--- PASS: TestBenchArraySetGet-4 (111.36 seconds)
+	all_test.go:2820: WR: 47565 ops in 6.000e+01 s, 7.927e+02 ops/s, 1.261e-03 s/op, max WAL size 162992
+	all_test.go:2869: RD: 47565 ops in 5.113e+01 s, 9.302e+02 ops/s, 1.075e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	111.376s
+(16:08) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$
+
+*/
+func TestBenchArraySetGet(t *testing.T) {
+	if !*oBench {
+		t.Log("Must be enabled by -tbench")
+		return
+	}
+
+	preRemove(dbname, false)
+
+	db, err := Create(dbname, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	if !*oKeep {
+		defer preRemove(dbname, false)
+	}
+
+	a, err := db.Array("test")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	c := time.After(time.Minute)
+	t0 := time.Now()
+	var maxSet int64
+loop:
+	for i := 0; ; {
+		select {
+		case <-c:
+			maxSet = int64(i - 1)
+			ftot := float64(time.Since(t0)) / float64(time.Second)
+			s := ""
+			if af, ok := db.filer.(*lldb.ACIDFiler0); ok {
+				s = fmt.Sprintf(", max WAL size %d", af.PeakWALSize())
+			}
+			t.Logf("WR: %d ops in %8.3e s, %8.3e ops/s, %8.3e s/op%s", i, ftot, float64(i)/ftot, ftot/float64(i), s)
+			break loop
+		default:
+		}
+
+		if err = a.Set(i^0x55555555, i); err != nil {
+			t.Error(err)
+			return
+		}
+
+		i++
+	}
+
+	if err = db.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	if db, err = Open(dbname, o); err != nil {
+		t.Error(err)
+		return
+	}
+
+	a, err = db.Array("test")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	t0 = time.Now()
+	for i := int64(0); i <= maxSet; i++ {
+		v, err := a.Get(i)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+
+		if g, e := v, int64(i^0x55555555); g != e {
+			t.Errorf("i %d: %T(%v) %T(%v)", i, g, g, e, e)
+			return
+		}
+	}
+
+	ftot := float64(time.Since(t0)) / float64(time.Second)
+	i := maxSet + 1
+	s := ""
+	if af, ok := db.filer.(*lldb.ACIDFiler0); ok {
+		s = fmt.Sprintf(", max WAL size %d", af.PeakWALSize())
+	}
+	t.Logf("RD: %d ops in %8.3e s, %8.3e ops/s, %8.3e s/op%s", i, ftot, float64(i)/ftot, ftot/float64(i), s)
 }

@@ -358,9 +358,9 @@ type BTreeEnumerator struct {
 	index   int
 }
 
-// Current returns the KV pair the enumerator is currently position on. If the
-// position is before the first KV pair in the tree or after the last KV pair
-// in the tree then err == io.EOF is returned.
+// Current returns the KV pair the enumerator is currently positioned on. If
+// the position is before the first KV pair in the tree or after the last KV
+// pair in the tree then err == io.EOF is returned.
 func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 	if e == nil {
 		err = errors.New("BTreeEnumerator method invoked on nil receiver")

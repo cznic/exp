@@ -13,6 +13,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"os"
 	"runtime"
 	"testing"
 
@@ -1257,4 +1258,209 @@ func TestDeleteAny(t *testing.T) {
 			t.Fatal(i)
 		}
 	}
+}
+
+func benchmarkBTreeSetFiler(b *testing.B, f Filer, sz int) {
+	b.SetBytes(int64(sz))
+
+	if err := f.BeginUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	tr, _, err := CreateBTree(a, nil)
+	if err != nil {
+		f.EndUpdate()
+		b.Error(err)
+		return
+	}
+
+	if err = f.EndUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
+	keys := make([][8]byte, b.N)
+	for i := range keys {
+		binary.BigEndian.PutUint64(keys[i][:], uint64(i))
+	}
+	v := make([]byte, sz)
+	runtime.GC()
+	b.ResetTimer()
+	for _, k := range keys {
+		if err = f.BeginUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+
+		if err := tr.Set(k[:], v); err != nil {
+			f.EndUpdate()
+			b.Error(err)
+			return
+		}
+
+		if err = f.EndUpdate(); err != nil {
+			b.Error(err)
+			return
+		}
+	}
+}
+
+func benchmarkBTreeSetMemFiler(b *testing.B, sz int) {
+	f := NewMemFiler()
+	benchmarkBTreeSetFiler(b, f, sz)
+}
+
+func BenchmarkBTreeSetMemFiler0(b *testing.B) {
+	benchmarkBTreeSetMemFiler(b, 0)
+}
+
+func BenchmarkBTreeSetMemFiler1e1(b *testing.B) {
+	benchmarkBTreeSetMemFiler(b, 1e1)
+}
+
+func BenchmarkBTreeSetMemFiler1e2(b *testing.B) {
+	benchmarkBTreeSetMemFiler(b, 1e2)
+}
+
+func BenchmarkBTreeSetMemFiler1e3(b *testing.B) {
+	benchmarkBTreeSetMemFiler(b, 1e3)
+}
+
+func benchmarkBTreeSetSimpleFileFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	benchmarkBTreeSetFiler(b, NewSimpleFileFiler(f), sz)
+}
+
+func BenchmarkBTreeSetSimpleFileFiler0(b *testing.B) {
+	benchmarkBTreeSetSimpleFileFiler(b, 0)
+}
+
+func BenchmarkBTreeSetSimpleFileFiler1e1(b *testing.B) {
+	benchmarkBTreeSetSimpleFileFiler(b, 1e1)
+}
+
+func BenchmarkBTreeSetSimpleFileFiler1e2(b *testing.B) {
+	benchmarkBTreeSetSimpleFileFiler(b, 1e2)
+}
+
+func BenchmarkBTreeSetSimpleFileFiler1e3(b *testing.B) {
+	benchmarkBTreeSetSimpleFileFiler(b, 1e3)
+}
+
+func benchmarkBTreeSetRollbackFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	g := NewSimpleFileFiler(f)
+	var filer *RollbackFiler
+	if filer, err = NewRollbackFiler(
+		g,
+		func() error {
+			sz, err := filer.Size()
+			if err != nil {
+				return err
+			}
+
+			if err = g.Truncate(sz); err != nil {
+				return err
+			}
+
+			return g.Sync()
+		},
+		g,
+	); err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkBTreeSetFiler(b, filer, sz)
+}
+
+func BenchmarkBTreeSetRollbackFiler0(b *testing.B) {
+	benchmarkBTreeSetRollbackFiler(b, 0)
+}
+
+func BenchmarkBTreeSetRollbackFiler1e1(b *testing.B) {
+	benchmarkBTreeSetRollbackFiler(b, 1e1)
+}
+
+func BenchmarkBTreeSetRollbackFiler1e2(b *testing.B) {
+	benchmarkBTreeSetRollbackFiler(b, 1e2)
+}
+
+func BenchmarkBTreeSetRollbackFiler1e3(b *testing.B) {
+	benchmarkBTreeSetRollbackFiler(b, 1e3)
+}
+
+func benchmarkBTreeSetACIDFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	os.Remove(walName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		wal.Close()
+		os.Remove(walName)
+	}()
+
+	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkBTreeSetFiler(b, filer, sz)
+}
+
+func BenchmarkBTreeSetACIDFiler0(b *testing.B) {
+	benchmarkBTreeSetACIDFiler(b, 0)
+}
+
+func BenchmarkBTreeSetACIDFiler1e1(b *testing.B) {
+	benchmarkBTreeSetACIDFiler(b, 1e1)
+}
+
+func BenchmarkBTreeSetACIDFiler1e2(b *testing.B) {
+	benchmarkBTreeSetACIDFiler(b, 1e2)
+}
+
+func BenchmarkBTreeSetACIDFiler1e3(b *testing.B) {
+	benchmarkBTreeSetACIDFiler(b, 1e3)
 }

@@ -241,3 +241,39 @@ lldb.ErrPERM.
 
 */
 package dbm
+
+/*
+
+ACID GracePeriod != 0 FSM STT
+
++------------+-----------------+---------------+-----------------+
+|\  Event    |                 |               |                 |
+| \--------\ |     enter       |     leave     |     timeout     |
+|   State   \|                 |               |                 |
++------------+-----------------+---------------+-----------------+
+| idle       | BeginUpdate     | panic         | panic           |
+|            | nest = 1        |               |                 |
+|            | start timer     |               |                 |
+|            | S = collecting  |               |                 |
++------------+-----------------+---------------+-----------------+
+| collecting | nest++          | nest--        | S = collecting- |
+|            |                 | if nest == 0  |     triggered   |
+|            |                 |     S = idle- |                 |
+|            |                 |         armed |                 |
++------------+-----------------+---------------+-----------------+
+| idle-      | nest = 1        | panic         | EndUpdate       |
+| aremd      | S = collecting- |               | S = idle        |
+|            |     armed       |               |                 |
++------------+-----------------+---------------+-----------------+
+| collecting-| nest++          | nest--        | S = collecting- |
+| armed      |                 | if nest == 0  |     triggered   |
+|            |                 |     S = idle- |                 |
+|            |                 |         armed |                 |
++------------+-----------------+---------------+-----------------+
+| collecting-| nest++          | nest--        | panic           |
+| triggered  |                 | if nest == 0  |                 |
+|            |                 |     EndUpdate |                 |
+|            |                 |     S = idle  |                 |
++------------+-----------------+---------------+-----------------+
+
+*/
