@@ -95,7 +95,7 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 		return
 	}
 
-	b := [16]byte{0x90, 0xdb, 0xf1, 0x1e, 0x00} // ver 0x00
+	b := [16]byte{0x60, 0xdb, 0xf1, 0x1e, 0x00} // ver 0x00
 	if n, err := filer.WriteAt(b[:], 0); n != 16 {
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}

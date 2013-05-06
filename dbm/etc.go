@@ -24,7 +24,7 @@ func (h *header) rd(b []byte) error {
 		panic("internal error")
 	}
 
-	if h.magic = b[:4]; bytes.Compare(h.magic, []byte{0x90, 0xdb, 0xf1, 0x1e}) != 0 {
+	if h.magic = b[:4]; bytes.Compare(h.magic, []byte{0x60, 0xdb, 0xf1, 0x1e}) != 0 {
 		return fmt.Errorf("Unknown file format")
 	}
 
