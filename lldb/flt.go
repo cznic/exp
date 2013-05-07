@@ -14,7 +14,7 @@ import (
 // with sizes in atoms >= MinSize.
 //
 // A FLTSlot implementation SHOULD NOT cache the Head values in memory, but
-// always readwrite them from/to the underlying Filer (the typical case). The
+// always read/write them from/to the underlying Filer (the typical case). The
 // rationale is: failing to do so, in case of Filers with structural
 // transaction support, effectively means a DB gets corrupted on the first
 // Rollback.

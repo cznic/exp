@@ -85,8 +85,8 @@ Content wiping
 
 When a block is deallocated, it's data content is not wiped as the added
 overhead may be substantial while not necessarily needed. Client code should
-however overwrite the content of any block having sensitive data with zeros (or
-random garbage or whatever safe) - before deallocating the block.
+however overwrite the content of any block having sensitive data with eg. zeros
+(good compression) - before deallocating the block.
 
 Block tags
 
@@ -158,8 +158,8 @@ existing references; the handle can be constant while the content size may be
 dynamic. When relocating a block, any space left by the original block content,
 above this single atom block, MUST be reclaimed.
 
-Relocations MUST point to only to a used short or long block == blocks with
-tags 0x00...0xFC.
+Relocations MUST point only to a used short or long block == blocks with tags
+0x00...0xFC.
 
 	+------++------+---------++----+
 	|  0   || 1..7 | 8...14  || 15 |

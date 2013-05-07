@@ -125,8 +125,8 @@ func elem(v interface{}) string {
 	}
 }
 
-// DumpScalars outputs a human readable dump of t to w. It is usable iff t keys
-// and values are encoded scalars (see EncodeScalars). Intended use is only for
+// Dump outputs a human readable dump of t to w. It is usable iff t keys and
+// values are encoded scalars (see EncodeScalars). Intended use is only for
 // examples or debugging. Some type information is lost in the rendering, for
 // example a float value '17.' and an integer value '17' may both output as
 // '17'.
@@ -474,8 +474,8 @@ func OpenBTree(store *Allocator, collate func(a, b []byte) int, handle int64) (b
 // RemoveBTree removes tree, represented by handle from store. Empty trees are
 // cheap, each uses only few bytes of the store. If there's a chance that a
 // tree will eventually get reused (non empty again), it's recommended to
-// not/never remove it.  One advantage of such approach is a never changing
-// handle to such tree.
+// not/never remove it.  One advantage of such approach is a stable handle of
+// such tree.
 func RemoveBTree(store *Allocator, handle int64) (err error) {
 	tree, err := OpenBTree(store, nil, handle)
 	if err != nil {

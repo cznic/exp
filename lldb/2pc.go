@@ -89,7 +89,7 @@ const (
 // transactions for, say one second before performing the two phase commit as
 // the typical performance for rotational hard disks is about few tens of
 // fsyncs per second atmost. For an example of such collective transaction
-// approach please see the colecting FSM STT in DBM[1].
+// approach please see the colecting FSM STT in Dbm's documentation[1].
 //
 //  [1]: http://godoc.org/github.com/cznic/exp/dbm
 type ACIDFiler0 struct {
