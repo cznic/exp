@@ -23,8 +23,8 @@ type FLTSlot interface {
 	// starting at Head.
 	MinSize() int64
 
-	// Head returns the start (atom address) of the list with free blocks
-	// of size >= MinSize.
+	// Head returns the handle of the head of the list with free blocks of
+	// size >= MinSize.
 	Head() (int64, error)
 
 	// SetHead sets the value of the start of the list. The old value of
@@ -203,8 +203,7 @@ func NewFLTAllocator(f Filer, fltKind int) (a *Allocator, err error) {
 	}
 
 	inner := NewInnerFiler(f, int64(flt.size))
-	a, err = NewAllocator(inner, flt)
-	return
+	return NewAllocator(inner, flt)
 }
 
 // The flt type builds a real free list table from the limited FLT

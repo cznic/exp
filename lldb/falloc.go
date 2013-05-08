@@ -83,7 +83,7 @@ in [0, 15].
 
 Content wiping
 
-When a block is deallocated, it's data content is not wiped as the added
+When a block is deallocated, its data content is not wiped as the added
 overhead may be substantial while not necessarily needed. Client code should
 however overwrite the content of any block having sensitive data with eg. zeros
 (good compression) - before deallocating the block.
@@ -118,6 +118,10 @@ If compression of written content is enabled, there are two cases: If
 compressed size < original size then the compressed content should be written
 if it will save at least one atom of the block. If compressed size >= original
 size then the compressed content should not be used.
+
+It's recommended to use compression. For example the BTrees implementation
+assumes compression is used. Using compression may cause a slowdown is some
+cases while it may as well cause a speedup.
 
 Short content block
 

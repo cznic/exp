@@ -16,7 +16,8 @@ import (
 var _ Filer = &SimpleFileFiler{} // Ensure SimpleFileFiler is a Filer.
 
 // SimpleFileFiler is an os.File backed Filer intended for use where structural
-// consistency can be reached by other means or where persistence is not
+// consistency can be reached by other means (SimpleFileFiler is fro example
+// wrapped in eg. an RollbackFiler or ACIDFiler0) or where persistence is not
 // required (temporary/working data sets).
 //
 // SimpleFileFiler is the most simple os.File backed Filer implementation as it

@@ -15,6 +15,8 @@ import (
 	"github.com/cznic/sortutil"
 )
 
+//TODO +BTreeEnumerator versioning?
+
 const (
 	kData             = 256         // [1, 512]
 	kIndex            = 256         // [2, 2048]
@@ -351,6 +353,10 @@ func (t *BTree) Set(key, value []byte) (err error) {
 
 // BTreeEnumerator is a closure of a BTree and a position. It is returned from
 // BTree.Seek.
+//
+// NOTE: BTreeEnumerator cannot be used after its BTree was mutated after the
+// BTreeEnumerator was acquired from any of the Seek, SeekFirst, SeekLast
+// methods.
 type BTreeEnumerator struct {
 	a       btreeStore
 	collate func(a, b []byte) int

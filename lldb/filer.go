@@ -47,13 +47,14 @@ type Filer interface {
 	Name() string
 
 	// PunchHole deallocates space inside a "file" in the byte range
-	// starting at off and continuing for size bytes.  The Filer size (as
-	// reported by `Size()` does not change when hole punching, even when
-	// punching the end of a file off.  In contrast to the Linux
+	// starting at off and continuing for size bytes. The actual hole
+	// created by PunchHole may be smaller than requested. The Filer size
+	// (as reported by `Size()` does not change when hole punching, even
+	// when punching the end of a file off.  In contrast to the Linux
 	// implementation of FALLOC_FL_PUNCH_HOLE in `fallocate`(2); a Filer is
 	// free not only to ignore `PunchHole()` (implement it as a nop), but
 	// additionally no guarantees about the content of the hole, when
-	// eventually read back, are required, i.e. any data, not only zeros,
+	// eventually read back, are required, i.e.  any data, not only zeros,
 	// can be read from the "hole", including just anything what was left
 	// there - with all of the possible security problems.
 	PunchHole(off, size int64) error

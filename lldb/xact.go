@@ -334,8 +334,8 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 // some WAL or 2PC or whatever other safe mechanism based recovery procedure
 // used by the lldb client.
 //
-// The "real" writes to the wrapped Filer go through the writerAt supplied to
-// NewRollbackFiler.
+// The "real" writes to the wrapped Filer (or WAL instead) go through the
+// writerAt supplied to NewRollbackFiler.
 //
 // List of functions/methods which are a good candidate to wrap in a
 // BeginUpdate/EndUpdate structural transaction:
@@ -344,6 +344,7 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 // 	Allocator.Free
 // 	Allocator.Realloc
 //
+//	CreateBTree
 // 	RemoveBTree
 // 	BTree.Clear
 // 	BTree.Delete
@@ -399,8 +400,10 @@ type RollbackFiler struct {
 // invocation.  No offset sorting is performed.  This may change if it proves
 // to be a problem. Such change would be considered backward compatible.
 //
-// NOTE: Using RollbackFiler, but failing to ever invoke BeginUpdate/EndUpdate
-// or Rollback will cause neither writerAt or checkpoint to be ever called.
+// NOTE: Using RollbackFiler, but failing to ever invoke a matching "closing"
+// EndUpdate after an "opening" BeginUpdate means neither writerAt or
+// checkpoint will ever get called - with all the possible data loss
+// consequences.
 func NewRollbackFiler(f Filer, checkpoint func() error, writerAt io.WriterAt) (r *RollbackFiler, err error) {
 	if f == nil || checkpoint == nil || writerAt == nil {
 		return nil, &ErrINVAL{Src: "lldb.NewRollbackFiler, nil argument"}
@@ -437,7 +440,7 @@ func (r *RollbackFiler) BeginUpdate() (err error) {
 // transactions and performs the Close operation.
 //
 // IOW: Regardless of the transaction nesting level the Close is always
-// performed.
+// performed but any uncommitted transaction data are lost.
 func (r *RollbackFiler) Close() (err error) {
 	if r.closed {
 		return &ErrPERM{r.f.Name() + ": Already closed"}

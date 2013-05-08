@@ -36,7 +36,7 @@
 // the unused) contiguous parts of a Filer, called blocks.  Blocks are
 // identified and referred to by a handle, an int64.
 //
-// Btrees
+// BTrees
 //
 // In addition to the VMM like services, lldb provides volatile and
 // non-volatile BTrees. Keys and values of a BTree are limited in size to 64kB
