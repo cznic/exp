@@ -120,7 +120,7 @@ if it will save at least one atom of the block. If compressed size >= original
 size then the compressed content should not be used.
 
 It's recommended to use compression. For example the BTrees implementation
-assumes compression is used. Using compression may cause a slowdown is some
+assumes compression is used. Using compression may cause a slowdown in some
 cases while it may as well cause a speedup.
 
 Short content block
@@ -410,25 +410,24 @@ func (a *Allocator) free2(h, atoms int64) (err error) {
 		}
 
 		return a.link(h-latoms, latoms+atoms)
-	case latoms != 0 && ratoms != 0:
-		// <- middle join ->
-		lh, rh := h-latoms, h+atoms
-		if err = a.unlink(lh, latoms, lp, ln); err != nil {
-			return
-		}
-
-		// Prev unlink may have invalidated rp or rn
-		if _, _, rp, rn, err = a.nfo(rh); err != nil {
-			return
-		}
-
-		if err = a.unlink(rh, ratoms, rp, rn); err != nil {
-			return
-		}
-
-		return a.link(h-latoms, latoms+atoms+ratoms)
 	}
-	panic("unreachable")
+	// case latoms != 0 && ratoms != 0:
+	// <- middle join ->
+	lh, rh := h-latoms, h+atoms
+	if err = a.unlink(lh, latoms, lp, ln); err != nil {
+		return
+	}
+
+	// Prev unlink may have invalidated rp or rn
+	if _, _, rp, rn, err = a.nfo(rh); err != nil {
+		return
+	}
+
+	if err = a.unlink(rh, ratoms, rp, rn); err != nil {
+		return
+	}
+
+	return a.link(h-latoms, latoms+atoms+ratoms)
 }
 
 // Add a free block h to the appropriate free list
@@ -462,15 +461,14 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 	case p != 0 && n == 0:
 		// last item in list
 		return a.next(p, 0)
-	case p != 0 && n != 0:
-		// intermediate item in a list
-		if err = a.next(p, n); err != nil {
-			return
-		}
-
-		return a.prev(n, p)
 	}
-	panic("unreachable")
+	// case p != 0 && n != 0:
+	// intermediate item in a list
+	if err = a.next(p, n); err != nil {
+		return
+	}
+
+	return a.prev(n, p)
 }
 
 // Return len(slice) == n, reuse src if possible.
@@ -664,63 +662,62 @@ retry:
 	case needAtoms == atoms:
 		// in place replace
 		return a.writeUsedBlock(handle, &c, b)
-	case needAtoms > atoms:
-		// in place extend or relocate
-		var sz int64
-		if sz, err = a.f.Size(); err != nil {
-			return
-		}
-
-		off := h2off(handle)
-		switch {
-		case off+atoms*16 == sz:
-			// relocating tail block - shortcut
-			return a.writeUsedBlock(handle, &c, b)
-		default:
-			if off+atoms*16 < sz {
-				// handle is not a tail block, check right neighbour
-				rh := handle + atoms
-				rtag, ratoms, p, n, e := a.nfo(rh)
-				if e != nil {
-					return e
-				}
-
-				if rtag == tagFreeShort || rtag == tagFreeLong {
-					// Right neighbour is a free block
-					if needAtoms <= atoms+ratoms {
-						// can expand in place
-						if err = a.unlink(rh, ratoms, p, n); err != nil {
-							return
-						}
-
-						atoms += ratoms
-						goto retry
-
-					}
-				}
-			}
-		}
-
-		if atoms > 1 {
-			if err = a.realloc(handle, nil); err != nil {
-				return
-			}
-		}
-
-		var newH int64
-		if newH, err = a.alloc(b, &c); err != nil {
-			return err
-		}
-
-		rb := [16]byte{0: tagUsedRelocated}
-		h2b(rb[1:], newH)
-		if err = a.writeAt(rb[:], h2off(handle)); err != nil {
-			return
-		}
-
-		return a.writeUsedBlock(newH, &c, b)
 	}
-	panic("unreachable")
+	// case needAtoms > atoms:
+	// in place extend or relocate
+	var sz int64
+	if sz, err = a.f.Size(); err != nil {
+		return
+	}
+
+	off = h2off(handle)
+	switch {
+	case off+atoms*16 == sz:
+		// relocating tail block - shortcut
+		return a.writeUsedBlock(handle, &c, b)
+	default:
+		if off+atoms*16 < sz {
+			// handle is not a tail block, check right neighbour
+			rh := handle + atoms
+			rtag, ratoms, p, n, e := a.nfo(rh)
+			if e != nil {
+				return e
+			}
+
+			if rtag == tagFreeShort || rtag == tagFreeLong {
+				// Right neighbour is a free block
+				if needAtoms <= atoms+ratoms {
+					// can expand in place
+					if err = a.unlink(rh, ratoms, p, n); err != nil {
+						return
+					}
+
+					atoms += ratoms
+					goto retry
+
+				}
+			}
+		}
+	}
+
+	if atoms > 1 {
+		if err = a.realloc(handle, nil); err != nil {
+			return
+		}
+	}
+
+	var newH int64
+	if newH, err = a.alloc(b, &c); err != nil {
+		return err
+	}
+
+	rb := [16]byte{0: tagUsedRelocated}
+	h2b(rb[1:], newH)
+	if err = a.writeAt(rb[:], h2off(handle)); err != nil {
+		return
+	}
+
+	return a.writeUsedBlock(newH, &c, b)
 }
 
 func (a *Allocator) writeAt(b []byte, off int64) (err error) {

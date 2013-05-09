@@ -123,24 +123,24 @@ func (b *Bits) pageBytes(pgI int64, pgFrom, pgTo, op int) (err error) {
 
 		_, err = f.writeAt(zeroPage[pgFrom:pgTo+1], pgI*pgSize+int64(pgFrom), true)
 		return
-	case opCpl:
-		var buf [pgSize]byte
-		var n int
-		if n, err = f.readAt(buf[:], pgSize, true); n != pgSize {
-			return
-		}
+	}
 
-		for i, v := range buf[pgFrom : pgTo+1] {
-			buf[i] = ^v
-		}
-		if buf == zeroPage {
-			return a.Delete(pgI)
-		}
-
-		_, err = f.writeAt(buf[:], pgI*pgSize+int64(pgFrom), true)
+	// case opCpl:
+	var buf [pgSize]byte
+	var n int
+	if n, err = f.readAt(buf[:], pgSize, true); n != pgSize {
 		return
 	}
-	panic("unreachable")
+
+	for i, v := range buf[pgFrom : pgTo+1] {
+		buf[i] = ^v
+	}
+	if buf == zeroPage {
+		return a.Delete(pgI)
+	}
+
+	_, err = f.writeAt(buf[:], pgI*pgSize+int64(pgFrom), true)
+	return
 }
 
 func (b *Bits) pageByte(off int64, fromBit, toBit, op int) (err error) {
@@ -164,7 +164,8 @@ func (b *Bits) pageByte(off int64, fromBit, toBit, op int) (err error) {
 
 func (b *Bits) pageBits(pgI int64, fromBit, toBit, op int) (err error) {
 	pgFrom, pgTo := fromBit>>3, toBit>>3
-	switch from, to := fromBit&7, toBit&7; {
+	from, to := fromBit&7, toBit&7
+	switch {
 	case from == 0 && to == 7:
 		return b.pageBytes(pgI, pgFrom, pgTo, op)
 	case from == 0 && to != 7:
@@ -209,29 +210,28 @@ func (b *Bits) pageBits(pgI int64, fromBit, toBit, op int) (err error) {
 
 			return b.pageByte(pgI*pgSize+int64(pgTo), 0, 7, op)
 		}
-	case from != 0 && to != 7:
-		switch pgTo - pgFrom {
-		case 0:
-			return b.pageByte(pgI*pgSize+int64(pgFrom), from, to, op)
-		case 1:
-			if err = b.pageByte(pgI*pgSize+int64(pgFrom), from, 7, op); err != nil {
-				return
-			}
-
-			return b.pageByte(pgI*pgSize+int64(pgTo), 0, to, op)
-		default:
-			if err = b.pageByte(pgI*pgSize+int64(pgFrom), from, 7, op); err != nil {
-				return
-			}
-
-			if err = b.pageBytes(pgI, pgFrom+1, pgTo-1, op); err != nil {
-				return
-			}
-
-			return b.pageByte(pgI*pgSize+int64(pgTo), 0, to, op)
-		}
 	}
-	panic("unreachable")
+	// case from != 0 && to != 7:
+	switch pgTo - pgFrom {
+	case 0:
+		return b.pageByte(pgI*pgSize+int64(pgFrom), from, to, op)
+	case 1:
+		if err = b.pageByte(pgI*pgSize+int64(pgFrom), from, 7, op); err != nil {
+			return
+		}
+
+		return b.pageByte(pgI*pgSize+int64(pgTo), 0, to, op)
+	default:
+		if err = b.pageByte(pgI*pgSize+int64(pgFrom), from, 7, op); err != nil {
+			return
+		}
+
+		if err = b.pageBytes(pgI, pgFrom+1, pgTo-1, op); err != nil {
+			return
+		}
+
+		return b.pageByte(pgI*pgSize+int64(pgTo), 0, to, op)
+	}
 }
 
 func (b *Bits) ops(fromBit, toBit uint64, op int) (err error) {

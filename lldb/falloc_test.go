@@ -443,8 +443,7 @@ func TestVerify1(t *testing.T) {
 		if err := a.Verify(
 			bitmap,
 			func(error) bool {
-				t.Fatal("should not be reachable")
-				panic("unreachable")
+				panic("intrnal error")
 			},
 			nil,
 		); err == nil {

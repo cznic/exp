@@ -589,8 +589,8 @@ func TestBTreeSeek(t *testing.T) {
 
 		expKey = enc8(10 * (i + 1))
 		if !bytes.Equal(g, expKey) {
-			fmt.Println(root.String(a))
-			//t.Fatalf("%d low|% x| g|% x| e|% x|", i, lowKey, g, expKey)
+			//fmt.Println(root.String(a))
+			t.Fatalf("%d low|% x| g|% x| e|% x|", i, lowKey, g, expKey)
 		}
 
 		g, err = dp.value(a, index)

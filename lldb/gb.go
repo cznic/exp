@@ -476,10 +476,9 @@ func collateComplex(x, y complex128) int {
 		case ix > iy:
 			return 1
 		}
-	case rx > ry:
-		return 1
 	}
-	panic("unreachable")
+	//case rx > ry:
+	return 1
 }
 
 func collateFloat(x, y float64) int {
@@ -488,10 +487,9 @@ func collateFloat(x, y float64) int {
 		return -1
 	case x == y:
 		return 0
-	case x > y:
-		return 1
 	}
-	panic("unreachable")
+	//case x > y:
+	return 1
 }
 
 func collateInt(x, y int64) int {
@@ -500,10 +498,9 @@ func collateInt(x, y int64) int {
 		return -1
 	case x == y:
 		return 0
-	case x > y:
-		return 1
 	}
-	panic("unreachable")
+	//case x > y:
+	return 1
 }
 
 func collateUint(x, y uint64) int {
@@ -512,10 +509,9 @@ func collateUint(x, y uint64) int {
 		return -1
 	case x == y:
 		return 0
-	case x > y:
-		return 1
 	}
-	panic("unreachable")
+	//case x > y:
+	return 1
 }
 
 func collateIntUint(x int64, y uint64) int {

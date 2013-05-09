@@ -60,7 +60,7 @@ func main() {
 	flag.Parse()
 	if *oTest {
 		dummie() // does/should not return
-		panic("unreachable")
+		panic("internal error")
 	}
 
 	slg.Print("Master started")

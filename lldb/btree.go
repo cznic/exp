@@ -111,6 +111,8 @@ func elem(v interface{}) string {
 		return "false"
 	case int64:
 		return fmt.Sprint(x)
+	case uint64:
+		return fmt.Sprint(x)
 	case float64:
 		s := fmt.Sprintf("%g", x)
 		if !strings.Contains(s, ".") {

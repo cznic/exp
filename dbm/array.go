@@ -336,10 +336,9 @@ func (a *Array) Clear(subscripts ...interface{}) (err error) {
 			return true, nil
 		case 0:
 			return true, a0.Delete(actualSubscripts...)
-		case 1:
-			return false, nil
 		}
-		panic("unreachable")
+		// case 1:
+		return false, nil
 	})
 }
 
