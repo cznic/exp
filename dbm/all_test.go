@@ -2717,6 +2717,19 @@ PASS
 ok  	github.com/cznic/exp/dbm	111.376s
 (16:08) jnml@fsc-r550:~/src/github.com/cznic/exp/dbm$
 
+2013-05-09
+==========
+
+# 16:05
+jnml@fsc-r630:~/src/github.com/cznic/exp/dbm$ go test -tbench -run TestBench -v -wal -xact
+=== RUN TestBenchArraySetGet
+--- PASS: TestBenchArraySetGet (106.22 seconds)
+	all_test.go:2759: WR: 27178 ops in 6.000e+01 s, 4.530e+02 ops/s, 2.208e-03 s/op, max WAL size 35120
+	all_test.go:2808: RD: 27178 ops in 4.600e+01 s, 5.909e+02 ops/s, 1.692e-03 s/op, max WAL size 0
+PASS
+ok  	github.com/cznic/exp/dbm	106.234s
+jnml@fsc-r630:~/src/github.com/cznic/exp/dbm$
+
 */
 func TestBenchArraySetGet(t *testing.T) {
 	if !*oBench {

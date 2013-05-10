@@ -307,7 +307,7 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 // While using RollbackFiler, every intended update of the wrapped Filler, by
 // WriteAt, Truncate or PunchHole, _must_ be made within a transaction.
 // Attempts to do it outside of a transaction will return lldb.ErrPERM. OTOH,
-// Invoking ReadAt outside of a transaction is not a problem.
+// invoking ReadAt outside of a transaction is not a problem.
 //
 // No nested transactions: All updates within a transaction are held in memory.
 // On a matching EndUpdate the updates held in memory are actually written to
