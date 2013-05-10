@@ -18,6 +18,8 @@ import (
 // AllocStats record statistics about a Filer. It can be optionally filled by
 // Allocator.Verify, if successful.
 type AllocStats struct {
+	Handles     int64 // total valid handles in use
+	Compression int64 // number of compressed blocks
 	TotalAtoms  int64 // total number of atoms == AllocAtoms + FreeAtoms
 	AllocBytes  int64 // bytes allocated (after decompression, if/where used)
 	AllocAtoms  int64 // atoms allocated/used, including relocation atoms
@@ -1012,7 +1014,7 @@ func (a *Allocator) verifyUnused(h, totalAtoms int64, tag byte, log func(error) 
 	return
 }
 
-func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, log func(error) bool, fast bool) (dlen int, atoms, link int64, err error) {
+func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, log func(error) bool, fast bool) (compressed bool, dlen int, atoms, link int64, err error) {
 	var (
 		padding  int
 		doff     int64
@@ -1056,7 +1058,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 			link = b2h(buf)
 		}
 
-		return dlen, atoms, link, nil
+		return false, dlen, atoms, link, nil
 	}
 
 	if ok := h+atoms-1 <= totalAtoms; !ok { // invalid last block
@@ -1068,7 +1070,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 	tailsz := 1 + padding
 	off := h2off(h) + 16*atoms - int64(tailsz)
 	if err = a.read(tailBuf[:tailsz], off); err != nil {
-		return 0, 0, 0, err
+		return false, 0, 0, 0, err
 	}
 
 	if ok := bytes.Equal(padZeros[:padding], tailBuf[:padding]); !ok {
@@ -1084,6 +1086,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 		log(err)
 		return
 	case tagCompressed:
+		compressed = true
 		if tag == tagUsedRelocated {
 			err = &ErrILSEQ{Type: ErrTailTag, Off: h2off(h)}
 			log(err)
@@ -1093,7 +1096,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 		fallthrough
 	case tagNotCompressed:
 		if err = a.read(buf[:dlen], doff); err != nil {
-			return 0, 0, 0, err
+			return false, 0, 0, 0, err
 		}
 	}
 
@@ -1257,12 +1260,19 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		default: // Short used
 			fallthrough
 		case tagUsedLong, tagUsedRelocated:
-			if dlen, atoms, _, err = a.verifyUsed(h, totalAtoms, tag, buf[:], ubuf[:], log, false); err != nil {
+			var compressed bool
+			if compressed, dlen, atoms, _, err = a.verifyUsed(h, totalAtoms, tag, buf[:], ubuf[:], log, false); err != nil {
 				return
 			}
 
+			if compressed {
+				st.Compression++
+			}
 			st.AllocAtoms += atoms
-			st.AllocBytes += int64(dlen)
+			if tag != tagUsedRelocated {
+				st.AllocBytes += int64(dlen)
+				st.Handles++
+			}
 			if tag == tagUsedRelocated {
 				st.Relocations++
 			}
@@ -1311,7 +1321,7 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 		default: // Short used
 			fallthrough
 		case tagUsedLong, tagUsedRelocated:
-			if _, atoms, link, err = a.verifyUsed(h, totalAtoms, tag, buf[:], ubuf[:], log, true); err != nil {
+			if _, _, atoms, link, err = a.verifyUsed(h, totalAtoms, tag, buf[:], ubuf[:], log, true); err != nil {
 				return
 			}
 		case tagFreeShort, tagFreeLong:

@@ -23,10 +23,7 @@ type acidWriter0 ACIDFiler0
 func (a *acidWriter0) WriteAt(b []byte, off int64) (n int, err error) {
 	f := (*ACIDFiler0)(a)
 	if f.bwal == nil { // new epoch
-		if err = f.data.Clear(); err != nil { // internal error
-			return
-		}
-
+		f.data = NewBTree(nil)
 		f.bwal = bufio.NewWriter(f.wal)
 		if err = a.writePacket([]interface{}{wpt00Header, walTypeACIDFiler0, ""}); err != nil {
 			return
@@ -94,12 +91,13 @@ const (
 //  [1]: http://godoc.org/github.com/cznic/exp/dbm
 type ACIDFiler0 struct {
 	*RollbackFiler
-	db       Filer
-	wal      *os.File
-	bwal     *bufio.Writer
-	data     *BTree
-	testHook bool  // keeps WAL untruncated (once)
-	peakWal  int64 // Tracks WAL maximum used size
+	db                Filer
+	wal               *os.File
+	bwal              *bufio.Writer
+	data              *BTree
+	testHook          bool  // keeps WAL untruncated (once)
+	peakWal           int64 // tracks WAL maximum used size
+	peakBitFilerPages int   // track maximum transaction memory
 }
 
 // NewACIDFiler0 returns a  newly created ACIDFiler0 with WAL in wal.
@@ -118,10 +116,7 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 		return
 	}
 
-	r = &ACIDFiler0{
-		wal:  wal,
-		data: NewBTree(nil),
-	}
+	r = &ACIDFiler0{wal: wal}
 
 	if fi.Size() != 0 {
 		if err = r.recoverDb(db); err != nil {
