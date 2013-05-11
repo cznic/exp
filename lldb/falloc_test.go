@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"runtime"
@@ -1772,3 +1773,268 @@ func BenchmarkAllocatorRndGetSimpleFileFiler1e3(b *testing.B) {
 // func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
 // 	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
 // }
+
+func TestBug20130511(t *testing.T) {
+	var (
+		data       []byte
+		maxHandles = 63 // < 63 passes
+		dsz        = 65536
+		pollN      = 100
+		filer      Filer
+		a          *Allocator
+		pollcnt    int
+		handles    = []int64{}
+	)
+
+	data, err := ioutil.ReadFile("lab/1/data")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bu := func() {
+		if err := filer.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	eu := func() {
+		if err := filer.EndUpdate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	poll := func() {
+		pollcnt++
+		if pollcnt%pollN == 0 {
+			eu()
+			t.Logf("commited")
+			bu()
+		}
+	}
+
+	alloc := func(b []byte) {
+		h, err := a.Alloc(b)
+		if err != nil {
+			t.Fatalf("alloc(%#x): %v", len(b), err)
+		}
+
+		handles = append(handles, h)
+		t.Logf("alloc(%#x) -> %#x\n", len(b), h)
+		poll()
+	}
+
+	wal, err := ioutil.TempFile("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filer, err = NewACIDFiler(NewMemFiler(), wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bu()
+	a, err = NewFLTAllocator(filer, FLTFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a.Compress = true
+
+	runtime.GC()
+	rng := rand.New(rand.NewSource(42))
+
+	for len(handles) < maxHandles {
+		alloc(data[:rng.Intn(dsz+1)])
+	}
+	for len(handles) > 31 { //maxHandles/2 {
+		if len(handles) < 2 {
+			break
+		}
+
+		x := rng.Intn(len(handles))
+		h := handles[x]
+		ln := len(handles)
+		handles[x] = handles[ln-1]
+		handles = handles[:ln-1]
+		err := a.Free(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Logf("free(%#x)", h)
+		poll()
+	}
+	for _, h := range handles[:6] {
+		ln := rng.Intn(dsz + 1)
+		err := a.Realloc(h, data[:ln])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Logf("realloc(h:%#x, sz:%#x)", h, ln)
+		poll()
+	}
+
+	for len(handles) < maxHandles {
+		alloc(data[:rng.Intn(dsz+1)])
+	}
+	eu()
+
+	t.Logf("PeakWALSize  %d", filer.(*ACIDFiler0).PeakWALSize())
+	fn := wal.Name()
+	wal.Close()
+	os.Remove(fn)
+}
+
+/*
+
+jnml@fsc-r630:~/src/github.com/cznic/exp/lldb$ go test -run Bug
+--- FAIL: TestBug20130511 (0.53 seconds)
+	falloc_test.go:1822: alloc(0x34f2) -> 0x1
+	falloc_test.go:1822: alloc(0xabd9) -> 0x1af
+	falloc_test.go:1822: alloc(0xa532) -> 0x630
+	falloc_test.go:1822: alloc(0x7784) -> 0xa7f
+	falloc_test.go:1822: alloc(0xd244) -> 0xdd8
+	falloc_test.go:1822: alloc(0x4955) -> 0x131d
+	falloc_test.go:1822: alloc(0xf39a) -> 0x1561
+	falloc_test.go:1822: alloc(0x5453) -> 0x1b31
+	falloc_test.go:1822: alloc(0x6a69) -> 0x1dbe
+	falloc_test.go:1822: alloc(0x2317) -> 0x20c8
+	falloc_test.go:1822: alloc(0xbbd1) -> 0x21ee
+	falloc_test.go:1822: alloc(0x668a) -> 0x26cd
+	falloc_test.go:1822: alloc(0x709c) -> 0x29c4
+	falloc_test.go:1822: alloc(0xab58) -> 0x2cf1
+	falloc_test.go:1822: alloc(0xfa8f) -> 0x316e
+	falloc_test.go:1822: alloc(0x53c1) -> 0x374e
+	falloc_test.go:1822: alloc(0x72d6) -> 0x39d6
+	falloc_test.go:1822: alloc(0x73d7) -> 0x3d14
+	falloc_test.go:1822: alloc(0x3627) -> 0x4059
+	falloc_test.go:1822: alloc(0xdce) -> 0x420d
+	falloc_test.go:1822: alloc(0x3464) -> 0x42a8
+	falloc_test.go:1822: alloc(0x6b8c) -> 0x4452
+	falloc_test.go:1822: alloc(0xcf16) -> 0x4760
+	falloc_test.go:1822: alloc(0x3a49) -> 0x4c9f
+	falloc_test.go:1822: alloc(0xd48a) -> 0x4e76
+	falloc_test.go:1822: alloc(0x82ce) -> 0x53c9
+	falloc_test.go:1822: alloc(0x8a3a) -> 0x576a
+	falloc_test.go:1822: alloc(0x8645) -> 0x5b3e
+	falloc_test.go:1822: alloc(0x3aa9) -> 0x5ef7
+	falloc_test.go:1822: alloc(0x2422) -> 0x60d0
+	falloc_test.go:1822: alloc(0xfc8a) -> 0x61ff
+	falloc_test.go:1822: alloc(0xb42e) -> 0x67eb
+	falloc_test.go:1822: alloc(0xd2b3) -> 0x6ca8
+	falloc_test.go:1822: alloc(0xbf5b) -> 0x71ef
+	falloc_test.go:1822: alloc(0x1eee) -> 0x76dc
+	falloc_test.go:1822: alloc(0x8130) -> 0x77ef
+	falloc_test.go:1822: alloc(0xa150) -> 0x7b81
+	falloc_test.go:1822: alloc(0x313a) -> 0x7fbf
+	falloc_test.go:1822: alloc(0xe9b6) -> 0x814d
+	falloc_test.go:1822: alloc(0x38d2) -> 0x86f8
+	falloc_test.go:1822: alloc(0x162a) -> 0x88c2
+	falloc_test.go:1822: alloc(0xe229) -> 0x8997
+	falloc_test.go:1822: alloc(0xd0b6) -> 0x8f14
+	falloc_test.go:1822: alloc(0xb8a2) -> 0x9457
+	falloc_test.go:1822: alloc(0xe655) -> 0x9920
+	falloc_test.go:1822: alloc(0x1456) -> 0x9eb8
+	falloc_test.go:1822: alloc(0x18ae) -> 0x9f85
+	falloc_test.go:1822: alloc(0xdad9) -> 0xa06a
+	falloc_test.go:1822: alloc(0x5f07) -> 0xa5d9
+	falloc_test.go:1822: alloc(0x4fab) -> 0xa8a1
+	falloc_test.go:1822: alloc(0x5d2d) -> 0xab04
+	falloc_test.go:1822: alloc(0xad16) -> 0xadc6
+	falloc_test.go:1822: alloc(0x9a9d) -> 0xb253
+	falloc_test.go:1822: alloc(0xdf33) -> 0xb676
+	falloc_test.go:1822: alloc(0x312d) -> 0xbbe8
+	falloc_test.go:1822: alloc(0xfedd) -> 0xbd76
+	falloc_test.go:1822: alloc(0x6390) -> 0xc374
+	falloc_test.go:1822: alloc(0x14ee) -> 0xc657
+	falloc_test.go:1822: alloc(0x6909) -> 0xc727
+	falloc_test.go:1822: alloc(0xc33b) -> 0xca2a
+	falloc_test.go:1822: alloc(0x1c13) -> 0xcf29
+	falloc_test.go:1822: alloc(0x60f8) -> 0xd02e
+	falloc_test.go:1822: alloc(0x1e40) -> 0xd2fd
+	falloc_test.go:1865: free(0x576a)
+	falloc_test.go:1865: free(0x67eb)
+	falloc_test.go:1865: free(0xbbe8)
+	falloc_test.go:1865: free(0xc374)
+	falloc_test.go:1865: free(0x8f14)
+	falloc_test.go:1865: free(0x316e)
+	falloc_test.go:1865: free(0x88c2)
+	falloc_test.go:1865: free(0x1561)
+	falloc_test.go:1865: free(0x6ca8)
+	falloc_test.go:1865: free(0x61ff)
+	falloc_test.go:1865: free(0x630)
+	falloc_test.go:1865: free(0xa5d9)
+	falloc_test.go:1865: free(0xdd8)
+	falloc_test.go:1865: free(0x1af)
+	falloc_test.go:1865: free(0x9f85)
+	falloc_test.go:1865: free(0x374e)
+	falloc_test.go:1865: free(0x5ef7)
+	falloc_test.go:1865: free(0x4c9f)
+	falloc_test.go:1865: free(0x1dbe)
+	falloc_test.go:1865: free(0x4452)
+	falloc_test.go:1865: free(0x3d14)
+	falloc_test.go:1865: free(0x814d)
+	falloc_test.go:1865: free(0x77ef)
+	falloc_test.go:1865: free(0xa06a)
+	falloc_test.go:1865: free(0x42a8)
+	falloc_test.go:1865: free(0x131d)
+	falloc_test.go:1865: free(0xc727)
+	falloc_test.go:1865: free(0x76dc)
+	falloc_test.go:1865: free(0xa7f)
+	falloc_test.go:1865: free(0x53c9)
+	falloc_test.go:1865: free(0x29c4)
+	falloc_test.go:1865: free(0x9eb8)
+	falloc_test.go:1875: realloc(h:0x1, sz:0xc61f)
+	falloc_test.go:1875: realloc(h:0xa8a1, sz:0x3ef3)
+	falloc_test.go:1875: realloc(h:0xb253, sz:0x69f3)
+	falloc_test.go:1875: realloc(h:0xca2a, sz:0xa222)
+	falloc_test.go:1875: realloc(h:0xab04, sz:0x2a7f)
+	falloc_test.go:1810: commited
+	falloc_test.go:1875: realloc(h:0x7fbf, sz:0x2f4c)
+	falloc_test.go:1875: realloc(h:0xbd76, sz:0xe23e)
+	falloc_test.go:1875: realloc(h:0x1b31, sz:0x90f4)
+	falloc_test.go:1875: realloc(h:0x9920, sz:0xff81)
+	falloc_test.go:1875: realloc(h:0x20c8, sz:0x1f5d)
+	falloc_test.go:1875: realloc(h:0x21ee, sz:0xa6c3)
+	falloc_test.go:1875: realloc(h:0x26cd, sz:0x95e7)
+	falloc_test.go:1875: realloc(h:0xcf29, sz:0xf4f6)
+	falloc_test.go:1875: realloc(h:0x2cf1, sz:0xfcbd)
+	falloc_test.go:1875: realloc(h:0xc657, sz:0xea8e)
+	falloc_test.go:1875: realloc(h:0x86f8, sz:0x98a4)
+	falloc_test.go:1875: realloc(h:0x39d6, sz:0x3888)
+	falloc_test.go:1875: realloc(h:0x7b81, sz:0x897b)
+	falloc_test.go:1875: realloc(h:0x4059, sz:0xbb6f)
+	falloc_test.go:1875: realloc(h:0x420d, sz:0x227c)
+	falloc_test.go:1875: realloc(h:0x8997, sz:0x64c6)
+	falloc_test.go:1875: realloc(h:0x9457, sz:0xfdbd)
+	falloc_test.go:1875: realloc(h:0x4760, sz:0x3bed)
+	falloc_test.go:1875: realloc(h:0xd02e, sz:0x9a47)
+	falloc_test.go:1875: realloc(h:0x4e76, sz:0x745d)
+	falloc_test.go:1875: realloc(h:0x71ef, sz:0xfd6e)
+	falloc_test.go:1875: realloc(h:0xd2fd, sz:0xfc1e)
+	falloc_test.go:1875: realloc(h:0x5b3e, sz:0xa619)
+	falloc_test.go:1875: realloc(h:0xadc6, sz:0xa538)
+	falloc_test.go:1875: realloc(h:0x60d0, sz:0x21d0)
+	falloc_test.go:1875: realloc(h:0xb676, sz:0xf3c2)
+	falloc_test.go:1822: alloc(0x45c4) -> 0x8c81
+	falloc_test.go:1822: alloc(0x9108) -> 0x9458
+	falloc_test.go:1822: alloc(0xf88a) -> 0x67f2
+	falloc_test.go:1822: alloc(0x7af9) -> 0xa51b
+	falloc_test.go:1822: alloc(0x2e6) -> 0x39ac
+	falloc_test.go:1822: alloc(0x876d) -> 0xc658
+	falloc_test.go:1822: alloc(0x4b7a) -> 0x86f9
+	falloc_test.go:1822: alloc(0xf09) -> 0xce6c
+	falloc_test.go:1822: alloc(0x9741) -> 0x6dcf
+	falloc_test.go:1822: alloc(0x349c) -> 0x405a
+	falloc_test.go:1822: alloc(0x3bb2) -> 0x51bd
+	falloc_test.go:1822: alloc(0xbd47) -> 0x71f0
+	falloc_test.go:1822: alloc(0xc4ec) -> 0x4942
+	falloc_test.go:1818: Block at offset 0x814c0: Expected a free block tag, got 0x73
+FAIL
+exit status 1
+FAIL	github.com/cznic/exp/lldb	0.552s
+jnml@fsc-r630:~/src/github.com/cznic/exp/lldb$
+
+*/

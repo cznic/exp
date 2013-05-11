@@ -11,7 +11,7 @@ todo:
 	@grep -n println *.go || true
 
 clean:
-	rm -f *~
+	rm -f *~ testdb*
 
 nuke:
 	rm -f 1

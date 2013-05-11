@@ -34,14 +34,14 @@ var (
 	verify     = flag.Bool("verify", false, "verify the resulting DB")
 	verbose    = flag.Bool("v", false, "output more info")
 	dsz        = flag.Int("dsz", 65536, "maximum datasize")
+	pollN      = flag.Int("poll", 100, "transactions to collect before commit")
 	keep       = flag.Bool("keep", false, "do not delete the test DB")
 	bkl        sync.Mutex
 	filer      lldb.Filer
 	a          *lldb.Allocator
-	acidState  int
-	acidNest   int
-	acidTimer  *time.Timer
-	closed     bool
+	pollcnt    int
+	ref        map[int64]bool //TODO-
+	handles    []int64
 )
 
 func init() {
@@ -52,117 +52,57 @@ func init() {
 	}
 }
 
+func doVerify(tag string) {
+	if !*verify {
+		return
+	}
+
+	if err := a.Verify(lldb.NewMemFiler(), nil, nil); err != nil {
+		log.Fatal(tag, err)
+	}
+}
+
+func poll() { // 001,011,101
+	pollcnt++
+	if pollcnt%*pollN == 0 {
+		eu()
+		bu()
+	}
+}
+
 func bu() {
-	//println("bu")
 	if err := filer.BeginUpdate(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func eu() {
-	//println("eu")
 	if err := filer.EndUpdate(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func enter() {
-	//println("enter")
-	bkl.Lock()
-	switch acidState {
-	default:
-		panic("internal error")
-	case stIdle:
-		bu()
-		acidNest = 1
-		acidTimer = time.AfterFunc(time.Second, timeout)
-		acidState = stCollecting
-	case stCollecting:
-		acidNest++
-	case stIdleArmed:
-		acidNest = 1
-		acidState = stCollectingArmed
-	case stCollectingArmed:
-		acidNest++
-	case stCollectingTriggered:
-		acidNest++
+func alloc(b []byte) {
+	h, err := a.Alloc(b)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	bu()
-	return
-}
-
-func leave() {
-	//println("leave")
-	switch acidState {
-	default:
-		panic("internal error")
-	case stIdle:
-		panic("internal error")
-	case stCollecting:
-		acidNest--
-		if acidNest == 0 {
-			acidState = stIdleArmed
-		}
-	case stIdleArmed:
-		panic("internal error")
-	case stCollectingArmed:
-		acidNest--
-		if acidNest == 0 {
-			acidState = stIdleArmed
-		}
-	case stCollectingTriggered:
-		acidNest--
-		if acidNest == 0 {
-			eu()
-			acidState = stIdle
-		}
+	if ref[h] {
+		log.Fatal(h)
 	}
 
-	eu()
-	bkl.Unlock()
-	return
-}
-
-func timeout() {
-	bkl.Lock()
-	defer bkl.Unlock()
-
-	if closed {
-		return
-	}
-
-	if filer == nil {
-		return
-	}
-
-	switch acidState {
-	default:
-		panic("internal error")
-	case stIdle:
-		panic("internal error")
-	case stCollecting:
-		acidState = stCollectingTriggered
-	case stIdleArmed:
-		eu()
-		acidState = stIdle
-	case stCollectingArmed:
-		acidState = stCollectingTriggered
-	case stCollectingTriggered:
-		panic("internal error")
-	}
+	ref[h] = true
+	handles = append(handles, h)
+	fmt.Printf("alloc -> %x\n", h)
+	poll()
 }
 
 func x(base string, fltKind int) {
-	acidState = stIdle
-	acidNest = 0
-	acidTimer = nil
-	closed = false
+	handles = []int64{}
+	name := "testdb" + base + "."
 
-	handles := []int64{}
-	name := "lldb-lab-1-" + base + "db"
-
-	f, err := ioutil.TempFile("", name)
+	f, err := ioutil.TempFile(".", name)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -173,38 +113,28 @@ func x(base string, fltKind int) {
 		log.Fatal(err)
 	}
 
-	filer, err = lldb.NewACIDFiler(lldb.NewSimpleFileFiler(f), wal)
+	//TODO filer, err = lldb.NewACIDFiler(lldb.NewSimpleFileFiler(f), wal)
+	filer, err = lldb.NewACIDFiler(lldb.NewMemFiler(), wal)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	enter()
-	{
-		a, err = lldb.NewFLTAllocator(filer, fltKind)
-		if err != nil {
-			log.Fatal(err)
-		}
+	bu()
+	a, err = lldb.NewFLTAllocator(filer, fltKind)
+	if err != nil {
+		log.Fatal(err)
 	}
-	leave()
 
 	a.Compress = true
 
 	runtime.GC()
 	t0 := time.Now()
 	rng := rand.New(rand.NewSource(42))
+	ref = map[int64]bool{}
 
 	for len(handles) < *maxHandles {
-		ln := rng.Intn(*dsz + 1)
-		enter()
-		h, err := a.Alloc(data[:ln])
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		leave()
-		handles = append(handles, h)
+		alloc(data[:rng.Intn(*dsz+1)])
 	}
-
 	for len(handles) > *maxHandles/2 {
 		if len(handles) < 2 {
 			break
@@ -215,37 +145,35 @@ func x(base string, fltKind int) {
 		ln := len(handles)
 		handles[x] = handles[ln-1]
 		handles = handles[:ln-1]
-		enter()
+		if !ref[h] {
+			log.Fatal(h)
+		}
+		delete(ref, h)
+		fmt.Printf("free  -> %x\n", h)
 		err := a.Free(h)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		leave()
+		poll()
 	}
-
 	for _, h := range handles {
+		if !ref[h] {
+			log.Fatal(h)
+		}
+
 		ln := rng.Intn(*dsz + 1)
-		enter()
 		err := a.Realloc(h, data[:ln])
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		leave()
+		poll()
 	}
-
 	for len(handles) < *maxHandles {
-		ln := rng.Intn(*dsz + 1)
-		enter()
-		h, err := a.Alloc(data[:ln])
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		leave()
-		handles = append(handles, h)
+		alloc(data[:rng.Intn(*dsz+1)])
 	}
+	eu()
 
 	sz, err := filer.Size()
 	if err != nil {
@@ -266,27 +194,15 @@ func x(base string, fltKind int) {
 	}
 
 	if *verbose {
-		log.Printf("PeakWALSize %d", filer.(*lldb.ACIDFiler0).PeakWALSize())
+		log.Printf("PeakWALSize  %d", filer.(*lldb.ACIDFiler0).PeakWALSize())
 	}
 
-	enter()
-	if acidTimer != nil {
-		acidTimer.Stop()
-		acidTimer = nil
-	}
-	closed = true
-
-	for acidNest > 0 {
-		acidNest--
-		eu()
-	}
-	leave()
 	if err = filer.Close(); err != nil {
 		log.Fatal(err)
 	}
 
 	d := time.Since(t0)
-	fmt.Printf("compress true, typ %d, %d handles, sz %10d time %s\n", fltKind, len(handles), sz, d)
+	fmt.Printf("typ %d, %d handles, sz %10d time %s\n", fltKind, len(handles), sz, d)
 
 	switch *keep {
 	case false:
@@ -300,11 +216,9 @@ func x(base string, fltKind int) {
 }
 
 func main() {
-	panic("ATM broken")
-	runtime.GOMAXPROCS(2)
 	flag.Parse()
 	log.SetFlags(log.Lshortfile)
-	x("0", lldb.FLTPowersOf2)
-	x("1", lldb.FLTFib)
+	//TODO+ x("0", lldb.FLTPowersOf2)
+	//TODO+ x("1", lldb.FLTFib)
 	x("2", lldb.FLTFull)
 }
