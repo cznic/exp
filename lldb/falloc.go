@@ -413,6 +413,7 @@ func (a *Allocator) free2(h, atoms int64) (err error) {
 
 		return a.link(h-latoms, latoms+atoms)
 	}
+
 	// case latoms != 0 && ratoms != 0:
 	// <- middle join ->
 	lh, rh := h-latoms, h+atoms
@@ -620,7 +621,6 @@ func (a *Allocator) realloc(handle int64, b []byte) (err error) {
 	}
 
 	needAtoms := int64(needAtoms0)
-
 	off := h2off(handle)
 	if err = a.read(b8[:], off); err != nil {
 		return
@@ -665,6 +665,7 @@ retry:
 		// in place replace
 		return a.writeUsedBlock(handle, &c, b)
 	}
+
 	// case needAtoms > atoms:
 	// in place extend or relocate
 	var sz int64

@@ -144,12 +144,7 @@ func (o *Options) acidFiler(db *DB, f lldb.Filer) (r lldb.Filer, err error) {
 		var rf *lldb.RollbackFiler
 		if rf, err = lldb.NewRollbackFiler(
 			f,
-			func() error {
-				sz, err := rf.Size()
-				if err != nil {
-					return err
-				}
-
+			func(sz int64) error {
 				return f.Truncate(sz)
 			},
 			f,

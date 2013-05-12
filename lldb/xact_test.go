@@ -48,12 +48,7 @@ func TestRollbackFiler0(t *testing.T) {
 	var r *RollbackFiler
 	f, g := NewMemFiler(), NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 
@@ -82,12 +77,7 @@ func TestRollbackFiler1(t *testing.T) {
 	var r *RollbackFiler
 	f, g := NewMemFiler(), NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 
@@ -135,12 +125,7 @@ func TestRollbackFiler2(t *testing.T) {
 	var r *RollbackFiler
 	f, g := NewMemFiler(), NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 
@@ -187,12 +172,7 @@ func TestRollbackFiler3(t *testing.T) {
 	var r *RollbackFiler
 	f := NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 
@@ -275,12 +255,7 @@ func TestRollbackFiler4(t *testing.T) {
 	var r *RollbackFiler
 	f := NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 
@@ -402,12 +377,7 @@ func BenchmarkRollbackFiler(b *testing.B) {
 	var r *RollbackFiler
 	f := NewMemFiler()
 
-	checkpoint := func() (err error) {
-		sz, err := r.Size()
-		if err != nil {
-			return
-		}
-
+	checkpoint := func(sz int64) (err error) {
 		return f.Truncate(sz)
 	}
 

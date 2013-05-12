@@ -91,7 +91,6 @@ const (
 //  [1]: http://godoc.org/github.com/cznic/exp/dbm
 type ACIDFiler0 struct {
 	*RollbackFiler
-	db                Filer
 	wal               *os.File
 	bwal              *bufio.Writer
 	data              *BTree
@@ -128,13 +127,8 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 
 	if r.RollbackFiler, err = NewRollbackFiler(
 		db,
-		func() (err error) {
+		func(sz int64) (err error) {
 			// Checkpoint
-			sz, err := r.Size()
-			if err != nil {
-				return
-			}
-
 			if err = acidWriter.writePacket([]interface{}{wpt00Checkpoint, sz}); err != nil {
 				return
 			}

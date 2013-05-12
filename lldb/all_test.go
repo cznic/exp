@@ -5,6 +5,8 @@
 package lldb
 
 import (
+	"encoding/hex"
+	"os"
 	"time"
 )
 
@@ -14,3 +16,11 @@ const (
 )
 
 func now() time.Time { return time.Now() }
+
+func hdump(b []byte) string {
+	return hex.Dump(b)
+}
+
+func die() {
+	os.Exit(1)
+}

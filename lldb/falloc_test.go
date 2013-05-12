@@ -1046,12 +1046,7 @@ func TestRollbackAllocator(t *testing.T) {
 		f := NewMemFiler()
 		var r *RollbackFiler
 		r, err := NewRollbackFiler(f,
-			func() (err error) {
-				sz, err := r.Size()
-				if err != nil {
-					return
-				}
-
+			func(sz int64) (err error) {
 				if err = f.Truncate(sz); err != nil {
 					return err
 				}
@@ -1254,12 +1249,7 @@ func benchmarkAllocatorAllocRollbackFiler(b *testing.B, sz int) {
 	var filer *RollbackFiler
 	if filer, err = NewRollbackFiler(
 		g,
-		func() error {
-			sz, err := filer.Size()
-			if err != nil {
-				return err
-			}
-
+		func(sz int64) error {
 			if err = g.Truncate(sz); err != nil {
 				return err
 			}
@@ -1471,12 +1461,7 @@ func benchmarkAllocatorRndFreeRollbackFiler(b *testing.B, sz int) {
 	var filer *RollbackFiler
 	if filer, err = NewRollbackFiler(
 		g,
-		func() error {
-			sz, err := filer.Size()
-			if err != nil {
-				return err
-			}
-
+		func(sz int64) error {
 			if err = g.Truncate(sz); err != nil {
 				return err
 			}
@@ -1807,19 +1792,21 @@ func TestBug20130511(t *testing.T) {
 		pollcnt++
 		if pollcnt%pollN == 0 {
 			eu()
-			t.Logf("commited")
 			bu()
 		}
 	}
 
+	seq := 0
 	alloc := func(b []byte) {
+		seq++
+		b[0] = byte(seq)
 		h, err := a.Alloc(b)
 		if err != nil {
 			t.Fatalf("alloc(%#x): %v", len(b), err)
 		}
 
 		handles = append(handles, h)
-		t.Logf("alloc(%#x) -> %#x\n", len(b), h)
+		t.Logf("alloc(%#x) -> %#x, seq %#x\n", len(b), h, seq)
 		poll()
 	}
 
@@ -1840,6 +1827,14 @@ func TestBug20130511(t *testing.T) {
 	}
 
 	a.Compress = true
+
+	t.Logf("%T %#v", a, a)
+	var o Filer = a.f
+	t.Logf("%T %#v", o, o)
+	o = o.(*InnerFiler).outer
+	t.Logf("%T %#v", o, o)
+	o = o.(*ACIDFiler0).RollbackFiler
+	t.Logf("%T %#v", o, o)
 
 	runtime.GC()
 	rng := rand.New(rand.NewSource(42))

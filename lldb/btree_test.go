@@ -1380,12 +1380,7 @@ func benchmarkBTreeSetRollbackFiler(b *testing.B, sz int) {
 	var filer *RollbackFiler
 	if filer, err = NewRollbackFiler(
 		g,
-		func() error {
-			sz, err := filer.Size()
-			if err != nil {
-				return err
-			}
-
+		func(sz int64) error {
 			if err = g.Truncate(sz); err != nil {
 				return err
 			}

@@ -40,3 +40,5 @@ Packet definitions
 */
 
 package lldb
+
+//TODO optimize bitfiler/wal/2pc data above final size

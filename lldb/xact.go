@@ -200,7 +200,9 @@ func (f *bitFiler) WriteAt(b []byte, off int64) (n int, err error) {
 	return f.writeAt(b, off, true)
 }
 
+//TODO union w/ above
 func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
+	off0 := off
 	pgI := off >> bfBits
 	pgO := int(off & bfMask)
 	n = len(b)
@@ -210,7 +212,6 @@ func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
 		pg := f.m[pgI]
 		if pg == nil {
 			pg = &bitPage{}
-			f.m[pgI] = pg
 			if f.parent != nil {
 				_, err = f.parent.ReadAt(pg.data[:], off&^bfMask)
 				if err != nil && err != io.EOF {
@@ -232,8 +233,9 @@ func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
 		pgO = 0
 		rem -= nc
 		b = b[nc:]
+		off += int64(nc)
 	}
-	f.size = mathutil.MaxInt64(f.size, off+int64(n))
+	f.size = mathutil.MaxInt64(f.size, off0+int64(n))
 	return
 }
 
@@ -361,13 +363,12 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 // wrapped Filer.
 type RollbackFiler struct {
 	bitFiler   *bitFiler
-	checkpoint func() error
+	checkpoint func(int64) error
 	closed     bool
 	f          Filer
 	parent     Filer
 	tlevel     int // transaction nesting level, 0 == not in transaction
 	writerAt   io.WriterAt
-	fakeSize   int64
 }
 
 // NewRollbackFiler returns a RollbackFiler wrapping f.
@@ -379,9 +380,10 @@ type RollbackFiler struct {
 // DB (or eg. a WAL) is thus now in a consistent state (virtually, in the ideal
 // world with no write caches, no HW failures, no process crashes, ...).
 //
-// NOTE: In, for example, a 2PC it is necessary to reflect also the Size at the
-// time of the checkpoint. All changes were successfully written already by
-// writerAt before invoking checkpoint.
+// NOTE: In, for example, a 2PC it is necessary to reflect also the sz
+// parameter as the new file size (as in the parameter to Truncate). All
+// changes were successfully written already by writerAt before invoking
+// checkpoint.
 //
 // The writerAt parameter
 //
@@ -404,7 +406,7 @@ type RollbackFiler struct {
 // EndUpdate after an "opening" BeginUpdate means neither writerAt or
 // checkpoint will ever get called - with all the possible data loss
 // consequences.
-func NewRollbackFiler(f Filer, checkpoint func() error, writerAt io.WriterAt) (r *RollbackFiler, err error) {
+func NewRollbackFiler(f Filer, checkpoint func(sz int64) error, writerAt io.WriterAt) (r *RollbackFiler, err error) {
 	if f == nil || checkpoint == nil || writerAt == nil {
 		return nil, &ErrINVAL{Src: "lldb.NewRollbackFiler, nil argument"}
 	}
@@ -413,7 +415,6 @@ func NewRollbackFiler(f Filer, checkpoint func() error, writerAt io.WriterAt) (r
 		checkpoint: checkpoint,
 		f:          f,
 		writerAt:   writerAt,
-		fakeSize:   -1,
 	}, nil
 }
 
@@ -489,8 +490,7 @@ func (r *RollbackFiler) EndUpdate() (err error) {
 			return
 		}
 
-		r.fakeSize = sz
-		return r.checkpoint()
+		return r.checkpoint(sz)
 	default:
 		r.bitFiler = parent.(*bitFiler)
 		sz, _ := bf.Size() // bitFiler.Size() never returns err != nil
@@ -542,11 +542,6 @@ func (r *RollbackFiler) Rollback() (err error) {
 
 // Implements Filer.
 func (r *RollbackFiler) Size() (sz int64, err error) {
-	if sz = r.fakeSize; sz >= 0 {
-		r.fakeSize = -1
-		return
-	}
-
 	if r.tlevel == 0 {
 		return r.f.Size()
 	}

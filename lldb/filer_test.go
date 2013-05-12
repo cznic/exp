@@ -64,12 +64,7 @@ var (
 
 		var r Filer
 
-		checkpoint := func() (err error) {
-			sz, err := r.Size()
-			if err != nil {
-				return
-			}
-
+		checkpoint := func(sz int64) (err error) {
 			return f.Truncate(sz)
 		}
 
