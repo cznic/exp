@@ -15,8 +15,6 @@ import (
 	"github.com/cznic/sortutil"
 )
 
-//TODO +BTreeEnumerator versioning?
-
 const (
 	kData             = 256         // [1, 512]
 	kIndex            = 256         // [2, 2048]
@@ -46,6 +44,7 @@ type BTree struct {
 	store   btreeStore
 	root    btree
 	collate func(a, b []byte) int
+	serial  uint64
 }
 
 // NewBTree returns a new, memory-only BTree.
@@ -56,7 +55,7 @@ func NewBTree(collate func(a, b []byte) int) *BTree {
 		panic(err.Error())
 	}
 
-	return &BTree{store, root, collate}
+	return &BTree{store, root, collate, 0}
 }
 
 // IsMem reports if t is a memory only BTree.
@@ -72,6 +71,7 @@ func (t *BTree) Clear() (err error) {
 		return
 	}
 
+	t.serial++
 	return t.root.clear(t.store)
 }
 
@@ -82,6 +82,7 @@ func (t *BTree) Delete(key []byte) (err error) {
 		return
 	}
 
+	t.serial++
 	_, err = t.root.extract(t.store, nil, t.collate, key)
 	return
 }
@@ -94,6 +95,7 @@ func (t *BTree) DeleteAny() (empty bool, err error) {
 		return
 	}
 
+	t.serial++
 	return t.root.deleteAny(t.store)
 }
 
@@ -201,6 +203,7 @@ func (t *BTree) Extract(key []byte) (value []byte, err error) {
 		return
 	}
 
+	t.serial++
 	return t.root.extract(t.store, nil, t.collate, key)
 }
 
@@ -232,6 +235,7 @@ func (t *BTree) Get(key []byte) (value []byte, err error) {
 		return
 	}
 
+	t.serial++ //TODO make .get R/O
 	return t.root.get(t.store, nil, t.collate, key)
 }
 
@@ -282,6 +286,7 @@ func (t *BTree) Put(key []byte, upd func(key, old []byte) (new []byte, write boo
 		return
 	}
 
+	t.serial++
 	return t.root.put2(t.store, t.collate, key, upd)
 }
 
@@ -294,8 +299,8 @@ func (t *BTree) Seek(key []byte) (enum *BTreeEnumerator, hit bool, err error) {
 		return
 	}
 
-	r := &BTreeEnumerator{a: t.store, collate: t.collate}
-	if r.p, r.index, hit, err = t.root.seek(r.a, r.collate, key); err != nil {
+	r := &BTreeEnumerator{t: t, collate: t.collate, serial: t.serial}
+	if r.p, r.index, hit, err = t.root.seek(t.store, r.collate, key); err != nil {
 		return
 	}
 
@@ -319,7 +324,7 @@ func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) {
 		return
 	}
 
-	return &BTreeEnumerator{a: t.store, collate: t.collate, p: p, index: 0}, nil
+	return &BTreeEnumerator{t: t, collate: t.collate, p: p, index: 0, serial: t.serial}, nil
 }
 
 // SeekLast returns an enumerator positioned on the last KV pair in the tree,
@@ -338,7 +343,7 @@ func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) {
 		return
 	}
 
-	return &BTreeEnumerator{a: t.store, collate: t.collate, p: p, index: p.len() - 1}, nil
+	return &BTreeEnumerator{t: t, collate: t.collate, p: p, index: p.len() - 1, serial: t.serial}, nil
 }
 
 // Set sets the value associated with key. Any previous value, if existed, is
@@ -349,6 +354,7 @@ func (t *BTree) Set(key, value []byte) (err error) {
 		return
 	}
 
+	t.serial++
 	_, err = t.root.put(t.store, t.collate, key, value, true)
 	return
 }
@@ -360,18 +366,27 @@ func (t *BTree) Set(key, value []byte) (err error) {
 // BTreeEnumerator was acquired from any of the Seek, SeekFirst, SeekLast
 // methods.
 type BTreeEnumerator struct {
-	a       btreeStore
+	t       *BTree
 	collate func(a, b []byte) int
 	p       btreeDataPage
 	index   int
+	serial  uint64
 }
 
 // Current returns the KV pair the enumerator is currently positioned on. If
 // the position is before the first KV pair in the tree or after the last KV
 // pair in the tree then err == io.EOF is returned.
+//
+// If the enumerator has been invalidated by updating the tree, ErrINVAL is
+// returned.
 func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 	if e == nil {
 		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		return
+	}
+
+	if e.serial != e.t.serial {
+		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -379,19 +394,27 @@ func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 		return nil, nil, io.EOF
 	}
 
-	if key, err = e.p.key(e.a, e.index); err != nil {
+	if key, err = e.p.key(e.t.store, e.index); err != nil {
 		return
 	}
 
-	value, err = e.p.value(e.a, e.index)
+	value, err = e.p.value(e.t.store, e.index)
 	return
 }
 
 // Next attempts to position the enumerator onto the next KV pair wrt the
 // current position. If there is no "next" KV pair, io.EOF is returned.
+//
+// If the enumerator has been invalidated by updating the tree, ErrINVAL is
+// returned.
 func (e *BTreeEnumerator) Next() (err error) {
 	if e == nil {
 		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		return
+	}
+
+	if e.serial != e.t.serial {
+		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -409,7 +432,7 @@ func (e *BTreeEnumerator) Next() (err error) {
 			break
 		}
 
-		if e.p, err = e.a.Get(e.p, ph); err != nil {
+		if e.p, err = e.t.store.Get(e.p, ph); err != nil {
 			e.p = nil
 			return
 		}
@@ -420,9 +443,17 @@ func (e *BTreeEnumerator) Next() (err error) {
 
 // Prev attempts to position the enumerator onto the previous KV pair wrt the
 // current position. If there is no "previous" KV pair, io.EOF is returned.
+//
+// If the enumerator has been invalidated by updating the tree, ErrINVAL is
+// returned.
 func (e *BTreeEnumerator) Prev() (err error) {
 	if e == nil {
 		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		return
+	}
+
+	if e.serial != e.t.serial {
+		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -440,7 +471,7 @@ func (e *BTreeEnumerator) Prev() (err error) {
 			break
 		}
 
-		if e.p, err = e.a.Get(e.p, ph); err != nil {
+		if e.p, err = e.t.store.Get(e.p, ph); err != nil {
 			e.p = nil
 			return
 		}

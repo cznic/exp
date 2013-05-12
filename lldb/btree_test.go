@@ -1459,3 +1459,78 @@ func BenchmarkBTreeSetACIDFiler1e2(b *testing.B) {
 func BenchmarkBTreeSetACIDFiler1e3(b *testing.B) {
 	benchmarkBTreeSetACIDFiler(b, 1e3)
 }
+
+func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) {
+	b := NewBTree(nil)
+	if err := b.Set([]byte{1}, []byte{2}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Set([]byte{3}, []byte{4}); err != nil {
+		t.Fatal(err)
+	}
+
+	e, err := b.SeekFirst()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err = e.Current(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = e.Next(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = e.Prev(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = mutate(b); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err = e.Current(); err == nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := err.(*ErrINVAL); !ok {
+		t.Fatalf("%T", err)
+	}
+
+	err = e.Next()
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := err.(*ErrINVAL); !ok {
+		t.Fatalf("%T", err)
+	}
+
+	err = e.Prev()
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := err.(*ErrINVAL); !ok {
+		t.Fatalf("%T", err)
+	}
+
+}
+
+func TestBTreeEnumeratorInvalidating(t *testing.T) {
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Clear() })
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Delete([]byte{1}) })
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.DeleteAny(); return err })
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Extract([]byte{1}); return err })
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Get([]byte{1}); return err }) //TODO will not work after RO Get materializes
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error {
+		_, _, err := b.Put(
+			[]byte{1},
+			func(k, o []byte) ([]byte, bool, error) { return nil, false, nil },
+		)
+		return err
+	})
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Set([]byte{4}, []byte{5}) })
+}

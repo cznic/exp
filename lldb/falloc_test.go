@@ -1657,107 +1657,102 @@ func BenchmarkAllocatorRndGetSimpleFileFiler1e3(b *testing.B) {
 	benchmarkAllocatorRndGetSimpleFileFiler(b, 1e3)
 }
 
-// func benchmarkAllocatorRndGetRollbackFiler(b *testing.B, sz int) {
-// 	os.Remove(testDbName)
-// 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
-// 	if err != nil {
-// 		b.Fatal(err)
-// 	}
-//
-// 	defer func() {
-// 		f.Close()
-// 		os.Remove(testDbName)
-// 	}()
-//
-// 	g := NewSimpleFileFiler(f)
-// 	var filer *RollbackFiler
-// 	if filer, err = NewRollbackFiler(
-// 		g,
-// 		func() error {
-// 			sz, err := filer.Size()
-// 			if err != nil {
-// 				return err
-// 			}
-//
-// 			if err = g.Truncate(sz); err != nil {
-// 				return err
-// 			}
-//
-// 			return g.Sync()
-// 		},
-// 		g,
-// 	); err != nil {
-// 		b.Error(err)
-// 		return
-// 	}
-//
-// 	benchmarkAllocatorRndGet(b, filer, sz)
-// }
-//
-// func BenchmarkAllocatorRndGetRollbackFiler0(b *testing.B) {
-// 	benchmarkAllocatorRndGetRollbackFiler(b, 0)
-// }
-//
-// func BenchmarkAllocatorRndGetRollbackFiler1e1(b *testing.B) {
-// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e1)
-// }
-//
-// func BenchmarkAllocatorRndGetRollbackFiler1e2(b *testing.B) {
-// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e2)
-// }
-//
-// func BenchmarkAllocatorRndGetRollbackFiler1e3(b *testing.B) {
-// 	benchmarkAllocatorRndGetRollbackFiler(b, 1e3)
-// }
-//
-// func benchmarkAllocatorRndGetACIDFiler(b *testing.B, sz int) {
-// 	dbg("%v: %d", now(), b.N)
-// 	os.Remove(testDbName)
-// 	os.Remove(walName)
-// 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
-// 	if err != nil {
-// 		b.Fatal(err)
-// 	}
-//
-// 	defer func() {
-// 		f.Close()
-// 		os.Remove(testDbName)
-// 	}()
-//
-// 	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
-// 	if err != nil {
-// 		b.Fatal(err)
-// 	}
-//
-// 	defer func() {
-// 		wal.Close()
-// 		os.Remove(walName)
-// 	}()
-//
-// 	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
-// 	if err != nil {
-// 		b.Error(err)
-// 		return
-// 	}
-//
-// 	benchmarkAllocatorRndGet(b, filer, sz)
-// }
-//
-// func BenchmarkAllocatorRndGetACIDFiler0(b *testing.B) {
-// 	benchmarkAllocatorRndGetACIDFiler(b, 0)
-// }
-//
-// func BenchmarkAllocatorRndGetACIDFiler1e1(b *testing.B) {
-// 	benchmarkAllocatorRndGetACIDFiler(b, 1e1)
-// }
-//
-// func BenchmarkAllocatorRndGetACIDFiler1e2(b *testing.B) {
-// 	benchmarkAllocatorRndGetACIDFiler(b, 1e2)
-// }
-//
-// func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
-// 	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
-// }
+func benchmarkAllocatorRndGetRollbackFiler(b *testing.B, sz int) {
+	os.Remove(testDbName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	g := NewSimpleFileFiler(f)
+	var filer *RollbackFiler
+	if filer, err = NewRollbackFiler(
+		g,
+		func(sz int64) error {
+			if err = g.Truncate(sz); err != nil {
+				return err
+			}
+
+			return g.Sync()
+		},
+		g,
+	); err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorRndGet(b, filer, sz)
+}
+
+func BenchmarkAllocatorRndGetRollbackFiler0(b *testing.B) {
+	benchmarkAllocatorRndGetRollbackFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndGetRollbackFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndGetRollbackFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndGetRollbackFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndGetRollbackFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndGetRollbackFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndGetRollbackFiler(b, 1e3)
+}
+
+func benchmarkAllocatorRndGetACIDFiler(b *testing.B, sz int) {
+	dbg("%v: %d", now(), b.N)
+	os.Remove(testDbName)
+	os.Remove(walName)
+	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		f.Close()
+		os.Remove(testDbName)
+	}()
+
+	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() {
+		wal.Close()
+		os.Remove(walName)
+	}()
+
+	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
+	if err != nil {
+		b.Error(err)
+		return
+	}
+
+	benchmarkAllocatorRndGet(b, filer, sz)
+}
+
+func BenchmarkAllocatorRndGetACIDFiler0(b *testing.B) {
+	benchmarkAllocatorRndGetACIDFiler(b, 0)
+}
+
+func BenchmarkAllocatorRndGetACIDFiler1e1(b *testing.B) {
+	benchmarkAllocatorRndGetACIDFiler(b, 1e1)
+}
+
+func BenchmarkAllocatorRndGetACIDFiler1e2(b *testing.B) {
+	benchmarkAllocatorRndGetACIDFiler(b, 1e2)
+}
+
+func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
+	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
+}
 
 func TestBug20130511(t *testing.T) {
 	var (
