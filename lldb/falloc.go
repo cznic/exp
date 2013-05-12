@@ -178,7 +178,7 @@ H is the handle of the relocated block in network byte order.
 Free blocks
 
 Free blocks are the result of space deallocation. Free blocks are organized in
-one ore more doubly linked lists, abstracted by the FLT interface. Free blocks
+one or more doubly linked lists, abstracted by the FLT interface. Free blocks
 MUST be "registered" by putting them in such list. Allocator MUST reuse a big
 enough free block, if such exists, before growing the file size. When a free
 block is created by deallocation or reallocation it MUST be joined with any
@@ -186,7 +186,6 @@ adjacently existing free blocks before "registering". If the resulting free
 block is now a last block of a file, the free block MUST be discarded and the
 file size MUST be truncated accordingly instead. Put differently, there MUST
 NOT ever be a free block at the file end.
-
 
 A single free atom
 
@@ -250,6 +249,10 @@ func NewAllocator(f Filer, flt FLT) (*Allocator, error) {
 // handles share the same value within the same Filer, but any value of a
 // handle not referring to any used block may become valid any time as a result
 // of Alloc.
+//
+// Invoking Alloc on an empty Allocator is guaranteed to return handle with
+// value 1. The intended use of content of handle 1 is a root "directory" of
+// other data held by an Allocator.
 //
 // Passing handles not obtained initially from Alloc or not anymore valid to
 // any other Allocator methods can result in an irreparably corrupted database.
@@ -595,7 +598,7 @@ reloc:
 	}
 }
 
-// Realloc sets the content of a block referred to by handle ot or returns an
+// Realloc sets the content of a block referred to by handle or returns an
 // error, if any.
 //
 // Handle must have been obtained initially from Alloc and must be still valid,

@@ -34,14 +34,14 @@ var (
 	verify     = flag.Bool("verify", false, "verify the resulting DB")
 	verbose    = flag.Bool("v", false, "output more info")
 	dsz        = flag.Int("dsz", 65536, "maximum datasize")
-	pollN      = flag.Int("poll", 100, "transactions to collect before commit")
+	pollN      = flag.Int("poll", 128, "transactions to collect before commit")
 	keep       = flag.Bool("keep", false, "do not delete the test DB")
 	bkl        sync.Mutex
 	filer      lldb.Filer
 	a          *lldb.Allocator
 	pollcnt    int
-	ref        map[int64]bool //TODO-
 	handles    []int64
+	commits    int
 )
 
 func init() {
@@ -66,6 +66,7 @@ func poll() { // 001,011,101
 	pollcnt++
 	if pollcnt%*pollN == 0 {
 		eu()
+		commits++
 		bu()
 	}
 }
@@ -88,19 +89,14 @@ func alloc(b []byte) {
 		log.Fatal(err)
 	}
 
-	if ref[h] {
-		log.Fatal(h)
-	}
-
-	ref[h] = true
 	handles = append(handles, h)
-	fmt.Printf("alloc -> %x\n", h)
 	poll()
 }
 
 func x(base string, fltKind int) {
 	handles = []int64{}
 	name := "testdb" + base + "."
+	commits = 0
 
 	f, err := ioutil.TempFile(".", name)
 	if err != nil {
@@ -113,8 +109,7 @@ func x(base string, fltKind int) {
 		log.Fatal(err)
 	}
 
-	//TODO filer, err = lldb.NewACIDFiler(lldb.NewSimpleFileFiler(f), wal)
-	filer, err = lldb.NewACIDFiler(lldb.NewMemFiler(), wal)
+	filer, err = lldb.NewACIDFiler(lldb.NewSimpleFileFiler(f), wal)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -130,7 +125,6 @@ func x(base string, fltKind int) {
 	runtime.GC()
 	t0 := time.Now()
 	rng := rand.New(rand.NewSource(42))
-	ref = map[int64]bool{}
 
 	for len(handles) < *maxHandles {
 		alloc(data[:rng.Intn(*dsz+1)])
@@ -145,11 +139,6 @@ func x(base string, fltKind int) {
 		ln := len(handles)
 		handles[x] = handles[ln-1]
 		handles = handles[:ln-1]
-		if !ref[h] {
-			log.Fatal(h)
-		}
-		delete(ref, h)
-		fmt.Printf("free  -> %x\n", h)
 		err := a.Free(h)
 		if err != nil {
 			log.Fatal(err)
@@ -158,10 +147,6 @@ func x(base string, fltKind int) {
 		poll()
 	}
 	for _, h := range handles {
-		if !ref[h] {
-			log.Fatal(h)
-		}
-
 		ln := rng.Intn(*dsz + 1)
 		err := a.Realloc(h, data[:ln])
 		if err != nil {
@@ -202,7 +187,7 @@ func x(base string, fltKind int) {
 	}
 
 	d := time.Since(t0)
-	fmt.Printf("typ %d, %d handles, sz %10d time %s\n", fltKind, len(handles), sz, d)
+	fmt.Printf("typ %d, %d handles, sz %10d time %s, %d commits\n", fltKind, len(handles), sz, d, commits)
 
 	switch *keep {
 	case false:
@@ -218,7 +203,7 @@ func x(base string, fltKind int) {
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Lshortfile)
-	//TODO+ x("0", lldb.FLTPowersOf2)
-	//TODO+ x("1", lldb.FLTFib)
+	x("0", lldb.FLTPowersOf2)
+	x("1", lldb.FLTFib)
 	x("2", lldb.FLTFull)
 }

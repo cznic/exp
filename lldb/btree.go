@@ -264,7 +264,7 @@ func (t *BTree) Last() (key, value []byte, err error) {
 
 // Put combines Get and Set in a more efficient way where the tree is walked
 // only once.  The upd(ater) receives the current (key, old-value), if that
-// exists or (key, nil) otherwise.  It can than return a (new-value, true, nil)
+// exists or (key, nil) otherwise.  It can then return a (new-value, true, nil)
 // to create or overwrite the existing value in the KV pair, or (whatever,
 // false, nil) if it decides not to create or not to update the value of the KV
 // pair.

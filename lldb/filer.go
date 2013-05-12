@@ -22,7 +22,7 @@ func doubleTrouble(first, second error) error {
 // to a file stream, a Filer is not sequentially accessible. ReadAt and WriteAt
 // are always "addressed" by an offset and are assumed to perform atomically.
 // A Filer is not safe for concurrent access, it's designed for consumption by
-// the other objects on package, which should use a Filer from one goroutine
+// the other objects in package, which should use a Filer from one goroutine
 // only or via a mutex. BeginUpdate, EndUpdate and Rollback must be either all
 // implemented by a Filer for structural integrity - or they should be all
 // no-ops; where/if that requirement is relaxed.
