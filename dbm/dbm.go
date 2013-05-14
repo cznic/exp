@@ -73,6 +73,7 @@ type DB struct {
 	fcache      treeCache       // Files cache
 	filer       lldb.Filer      // Wraps f
 	gracePeriod time.Duration   // WAL grace period
+	lock        *os.File        // The DB file lock
 	removing    map[int64]bool  // BTrees being removed
 	removingMu  sync.Mutex      // Remove() coordination
 	scache      treeCache       // System arrays cache
@@ -93,13 +94,24 @@ func Create(name string, opts *Options) (db *DB, err error) {
 		return
 	}
 
-	return create(f, lldb.NewSimpleFileFiler(f), opts)
+	return create(f, lldb.NewSimpleFileFiler(f), opts, false)
 }
 
-func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
-	if err = opts.check(filer.Name(), true); err != nil {
+func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, err error) {
+	if err = opts.check(filer.Name(), true, !isMem); err != nil {
 		return
 	}
+
+	defer func() {
+		lock := opts.lock
+		db.lock = lock
+		if err != nil && lock != nil {
+			n := lock.Name()
+			lock.Close()
+			os.Remove(n)
+			db = nil
+		}
+	}()
 
 	b := [16]byte{byte(magic[0]), byte(magic[1]), byte(magic[2]), byte(magic[3]), 0x00} // ver 0x00
 	if n, err := filer.WriteAt(b[:], 0); n != 16 {
@@ -140,7 +152,7 @@ func create(f *os.File, filer lldb.Filer, opts *Options) (db *DB, err error) {
 // For the meaning of opts please see documentation of Options.
 func CreateMem(opts *Options) (db *DB, err error) {
 	f := lldb.NewMemFiler()
-	return create(nil, f, opts)
+	return create(nil, f, opts, true)
 }
 
 // CreateTemp creates a new temporary DB in the directory dir with a name
@@ -157,7 +169,7 @@ func CreateTemp(dir, prefix string, opts *Options) (db *DB, err error) {
 		return
 	}
 
-	return create(f, lldb.NewSimpleFileFiler(f), opts)
+	return create(f, lldb.NewSimpleFileFiler(f), opts, false)
 }
 
 // Open opens the named DB file for reading/writing. If successful, methods on
@@ -166,12 +178,23 @@ func CreateTemp(dir, prefix string, opts *Options) (db *DB, err error) {
 //
 // For the meaning of opts please see documentation of Options.
 func Open(name string, opts *Options) (db *DB, err error) {
-	f, err := os.OpenFile(name, os.O_RDWR, 0666)
-	if err != nil {
+	if err = opts.check(name, false, true); err != nil {
 		return
 	}
 
-	if err = opts.check(f.Name(), false); err != nil {
+	defer func() {
+		lock := opts.lock
+		db.lock = lock
+		if err != nil && lock != nil {
+			n := lock.Name()
+			lock.Close()
+			os.Remove(n)
+			db = nil
+		}
+	}()
+
+	f, err := os.OpenFile(name, os.O_RDWR, 0666)
+	if err != nil {
 		return
 	}
 
@@ -213,7 +236,8 @@ func Open(name string, opts *Options) (db *DB, err error) {
 // Close closes the DB, rendering it unusable for I/O. It returns an error, if
 // any. Failing to call Close before exiting a program can render the DB
 // unusable.  A dbm client should install signal handlers and ensure Close is
-// called on receiving of, for example, the SIGINT signal.
+// called on receiving of, for example, the SIGINT signal.(TODO make it
+// automatic)
 //
 // Close is idempotent.
 func (db *DB) Close() (err error) {
@@ -245,6 +269,18 @@ func (db *DB) Close() (err error) {
 	e = db.leave(&err)
 	if err = db.close(); err == nil {
 		err = e
+	}
+
+	if lock := db.lock; lock != nil {
+		n := lock.Name()
+		e1 := lock.Close()
+		e2 := os.Remove(n)
+		if err == nil {
+			err = e1
+		}
+		if err == nil {
+			err = e2
+		}
 	}
 	return
 }

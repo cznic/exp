@@ -88,12 +88,20 @@ type Options struct {
 	// and they may not be always honored.
 	GracePeriod time.Duration
 	wal         *os.File
-	checked     bool
+	lock        *os.File
 }
 
-func (o *Options) check(dbname string, new bool) (err error) {
-	if o.checked {
-		return
+func (o *Options) check(dbname string, new, lock bool) (err error) {
+	var lname string
+	if lock {
+		lname = o.lockName(dbname)
+		if o.lock, err = os.OpenFile(lname, os.O_CREATE|os.O_EXCL|os.O_RDONLY, 0666); err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("cannot access DB %q: lock file %q exists", dbname, lname)
+			}
+
+			return
+		}
 	}
 
 	switch o.ACID {
@@ -102,6 +110,10 @@ func (o *Options) check(dbname string, new bool) (err error) {
 	case ACIDNone, ACIDTransactions:
 	case ACIDFull:
 		o.WAL = o.walName(dbname, o.WAL)
+		if lname == o.WAL {
+			panic("internal error")
+		}
+
 		switch new {
 		case true:
 			if o.wal, err = os.OpenFile(o.WAL, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666); err != nil {
@@ -114,8 +126,14 @@ func (o *Options) check(dbname string, new bool) (err error) {
 		}
 	}
 
-	o.checked = true
 	return
+}
+
+func (o *Options) lockName(dbname string) (r string) {
+	base := filepath.Base(filepath.Clean(dbname)) + "lockfile"
+	h := sha1.New()
+	io.WriteString(h, base)
+	return filepath.Join(filepath.Dir(dbname), fmt.Sprintf(".%x", h.Sum(nil)))
 }
 
 func (o *Options) walName(dbname, wal string) (r string) {
@@ -124,17 +142,12 @@ func (o *Options) walName(dbname, wal string) (r string) {
 	}
 
 	base := filepath.Base(filepath.Clean(dbname))
-
 	h := sha1.New()
 	io.WriteString(h, base)
 	return filepath.Join(filepath.Dir(dbname), fmt.Sprintf(".%x", h.Sum(nil)))
 }
 
 func (o *Options) acidFiler(db *DB, f lldb.Filer) (r lldb.Filer, err error) {
-	if !o.checked {
-		panic("internal error")
-	}
-
 	switch o.ACID {
 	default:
 		panic("internal error")

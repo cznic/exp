@@ -9,15 +9,9 @@
 //
 // Experimental release notes
 //
-// This is an experimental release.  Don't open a DB from two applications or
+// This is an experimental release. Don't open a DB from two applications or
 // two instances of an application - it will get corrupted (no file locking is
-// implemented). Don't do that even when in "read only" mode - it may get
-// corrupted anyway, because reading from the DB may actually cause writing to
-// it.  Some internal structures are rebuilt lazily and there's no option yet
-// for a true read only mode (but it's planned).
-//
-// Support for Go 1.0.3 was not tested and is not planned. IOW, you must use Go
-// tip. lldb's target is Go 1.1.
+// implemented and this task is delegated to lldb's clients).
 //
 // Only few attempts to profile and/or improve performance were made (TODO).
 //
@@ -62,7 +56,7 @@
 // Blocks
 //
 // Allocated/used blocks, are limited in size to only a little bit more than
-// 64kB.  Bigger semantic entities/structures must be built in VMM's client
+// 64kB.  Bigger semantic entities/structures must be built in lldb's client
 // code.  The content of a block has no semantics attached, it's only a fully
 // opaque `[]byte`.
 //

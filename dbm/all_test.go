@@ -80,6 +80,8 @@ func preRemove(dbname string, wal bool) (err error) {
 	os.Remove(dbname)
 	o := Options{}
 	wn := o.walName(dbname, "")
+	ln := o.lockName(dbname)
+	os.Remove(ln)
 	switch wal {
 	case false:
 		os.Remove(wn)
@@ -2819,4 +2821,52 @@ loop:
 		s = fmt.Sprintf(", max WAL size %d", af.PeakWALSize())
 	}
 	t.Logf("RD: %d ops in %8.3e s, %8.3e ops/s, %8.3e s/op%s", i, ftot, float64(i)/ftot, ftot/float64(i), s)
+}
+
+func TestLocking(t *testing.T) {
+	db, err := CreateTemp(".", "test-dbm-", &Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		if db != nil {
+			n := db.Name()
+			db.Close()
+			os.Remove(n)
+		}
+	}()
+
+	// Must fail on lock or file exists
+	if _, err = Create(db.Name(), &Options{}); err == nil {
+		t.Error(err)
+		return
+	}
+
+	t.Log(err)
+	// Must fail on lock
+	if _, err = Open(db.Name(), &Options{}); err == nil {
+		t.Error(err)
+		return
+	}
+
+	t.Log(err)
+	n := db.Name()
+	if err = db.Close(); err != nil {
+		t.Error(err)
+		return
+	}
+
+	// Must fail on DB file exists
+	if _, err = Create(n, &Options{}); err == nil {
+		t.Error(err)
+		return
+	}
+
+	t.Log(err)
+	// Must succeed
+	if db, err = Open(n, &Options{}); err != nil {
+		t.Error(err)
+		return
+	}
 }

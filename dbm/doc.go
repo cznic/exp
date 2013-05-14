@@ -13,12 +13,7 @@ speed. Dbm was written for a project running on an embedded ARM Linux system.
 
 Experimental release notes
 
-This is an experimental release.  Don't open a DB from two applications or two
-instances of an application - it will get corrupted (no file locking is
-implemented). Don't do that even when in "read only" mode - it may get
-corrupted anyway, because reading from the DB may actually cause writing to it.
-Some internal structures are rebuilt lazily and there's no option yet for a
-true read only mode (but it's planned).
+This is an experimental release. However, it is now nearly feature complete.
 
 Key collating respecting client supplied locale is not yet implemented. Planned
 when exp/locale materializes. Because of this, the dbm API doesn't yet allow
