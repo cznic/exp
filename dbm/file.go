@@ -6,6 +6,7 @@ package dbm
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/cznic/exp/lldb"
@@ -126,7 +127,12 @@ func (f *File) Size() (sz int64, err error) {
 		return
 	}
 
-	defer f.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		f.db.leave(&err)
+	}()
 
 	if ok, err := (*Array)(f).validate(false); !ok {
 		return 0, err
@@ -298,6 +304,12 @@ func (f *File) Truncate(size int64) (err error) {
 	if err = f.db.enter(); err != nil {
 		return
 	}
+
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+	}()
 
 	a := (*Array)(f)
 	switch {

@@ -5,6 +5,7 @@
 package dbm
 
 import (
+	"fmt"
 	"github.com/cznic/exp/lldb"
 )
 
@@ -75,7 +76,12 @@ func (a *Array) Array(subscripts ...interface{}) (r Array, err error) {
 		return
 	}
 
-	defer a.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	return a.array(subscripts...)
 }
@@ -92,7 +98,8 @@ func (a *Array) array(subscripts ...interface{}) (r Array, err error) {
 }
 
 func (a *Array) bset(val, key []byte) (err error) {
-	return a.tree.Set(append(a.prefix, key...), val)
+	err = a.tree.Set(append(a.prefix, key...), val)
+	return
 }
 
 func (a *Array) binc(delta int64, key []byte) (r int64, err error) {
@@ -134,7 +141,12 @@ func (a *Array) Set(value interface{}, subscripts ...interface{}) (err error) {
 		return
 	}
 
-	defer a.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return &lldb.ErrPERM{Src: "dbm.Array.Set"}
@@ -169,7 +181,12 @@ func (a *Array) Inc(delta int64, subscripts ...interface{}) (val int64, err erro
 		return
 	}
 
-	defer a.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return 0, &lldb.ErrPERM{Src: "dbm.Array.Inc"}
@@ -198,7 +215,12 @@ func (a *Array) Get(subscripts ...interface{}) (value interface{}, err error) {
 		return
 	}
 
-	defer a.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	if ok, e := a.validate(false); !ok || err != nil {
 		err = e
@@ -249,7 +271,12 @@ func (a *Array) Delete(subscripts ...interface{}) (err error) {
 		return
 	}
 
-	defer a.db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return &lldb.ErrPERM{Src: "dbm.Array.Delete"}
@@ -279,22 +306,25 @@ func (a *Array) Clear(subscripts ...interface{}) (err error) {
 		return
 	}
 
-	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
-		if a.db.leave(&err) != nil {
-			return
+	doLeave := true
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
 		}
+		if doLeave {
+			a.db.leave(&err)
+		}
+	}()
 
+	if t := a.tree; t != nil && !t.IsMem() && a.tree.Handle() == 1 {
 		return &lldb.ErrPERM{Src: "dbm.Array.Clear"}
 	}
 
 	if ok, err := a.validate(false); !ok {
-		if a.db.leave(&err) != nil {
-			return err
-		}
-
 		return err
 	}
 
+	doLeave = false
 	if a.db.leave(&err) != nil {
 		return
 	}

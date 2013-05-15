@@ -98,13 +98,8 @@ func Create(name string, opts *Options) (db *DB, err error) {
 }
 
 func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, err error) {
-	if err = opts.check(filer.Name(), true, !isMem); err != nil {
-		return
-	}
-
 	defer func() {
 		lock := opts.lock
-		db.lock = lock
 		if err != nil && lock != nil {
 			n := lock.Name()
 			lock.Close()
@@ -113,12 +108,16 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 		}
 	}()
 
+	if err = opts.check(filer.Name(), true, !isMem); err != nil {
+		return
+	}
+
 	b := [16]byte{byte(magic[0]), byte(magic[1]), byte(magic[2]), byte(magic[3]), 0x00} // ver 0x00
 	if n, err := filer.WriteAt(b[:], 0); n != 16 {
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}
 
-	db = &DB{emptySize: 128, f: f}
+	db = &DB{emptySize: 128, f: f, lock: opts.lock}
 
 	if filer, err = opts.acidFiler(db, filer); err != nil {
 		return nil, err
@@ -178,13 +177,8 @@ func CreateTemp(dir, prefix string, opts *Options) (db *DB, err error) {
 //
 // For the meaning of opts please see documentation of Options.
 func Open(name string, opts *Options) (db *DB, err error) {
-	if err = opts.check(name, false, true); err != nil {
-		return
-	}
-
 	defer func() {
 		lock := opts.lock
-		db.lock = lock
 		if err != nil && lock != nil {
 			n := lock.Name()
 			lock.Close()
@@ -192,6 +186,10 @@ func Open(name string, opts *Options) (db *DB, err error) {
 			db = nil
 		}
 	}()
+
+	if err = opts.check(name, false, true); err != nil {
+		return
+	}
 
 	f, err := os.OpenFile(name, os.O_RDWR, 0666)
 	if err != nil {
@@ -218,7 +216,7 @@ func Open(name string, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
 
-	db = &DB{f: f}
+	db = &DB{f: f, lock: opts.lock}
 	if filer, err = opts.acidFiler(db, filer); err != nil {
 		return nil, err
 	}
@@ -245,8 +243,18 @@ func (db *DB) Close() (err error) {
 		return
 	}
 
+	doLeave := true
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		if doLeave {
+			db.leave(&err)
+		}
+	}()
+
 	if db.closed {
-		return db.leave(&err)
+		return
 	}
 
 	db.closed = true
@@ -266,6 +274,7 @@ func (db *DB) Close() (err error) {
 	}
 	err = e
 
+	doLeave = false
 	e = db.leave(&err)
 	if err = db.close(); err == nil {
 		err = e
@@ -348,7 +357,12 @@ func (db *DB) Array(array string, subscripts ...interface{}) (a Array, err error
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.array_(false, array, subscripts...)
 }
@@ -388,7 +402,12 @@ func (db *DB) Set(value interface{}, array string, subscripts ...interface{}) (e
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	a, err := db.array_(true, array, subscripts...)
 	if err != nil {
@@ -405,7 +424,12 @@ func (db *DB) Get(array string, subscripts ...interface{}) (value interface{}, e
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -423,7 +447,12 @@ func (db *DB) Slice(array string, subscripts, from, to []interface{}) (s *Slice,
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -439,7 +468,12 @@ func (db *DB) Delete(array string, subscripts ...interface{}) (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
@@ -455,11 +489,22 @@ func (db *DB) Clear(array string, subscripts ...interface{}) (err error) {
 		return
 	}
 
+	doLeave := true
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		if doLeave {
+			db.leave(&err)
+		}
+	}()
+
 	a, err := db.array_(false, array, subscripts...)
 	if a.tree == nil || err != nil {
-		return db.leave(&err)
+		return
 	}
 
+	doLeave = false
 	e := db.leave(&err)
 	if err = a.Clear(); err == nil {
 		err = e
@@ -478,7 +523,13 @@ func (db *DB) Size() (sz int64, err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
+
 	return db.filer.Size()
 }
 
@@ -507,7 +558,12 @@ func (db *DB) RemoveArray(array string) (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.removeArray(arraysPrefix, array)
 }
@@ -518,7 +574,12 @@ func (db *DB) RemoveFile(file string) (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.removeArray(filesPrefix, file)
 }
@@ -657,24 +718,44 @@ func (db *DB) victor(removes Array, h int64) {
 	var finished bool
 	defer func() {
 		if finished {
-			db.enter()
-			lldb.RemoveBTree(db.alloc, h)
-			removes.delete(h)
-			db.setRemoving(h, false)
-			db.leave(&err)
+			func() {
+				db.enter()
+
+				defer func() {
+					if e := recover(); e != nil {
+						err = fmt.Errorf("%v", e)
+					}
+					db.leave(&err)
+				}()
+
+				lldb.RemoveBTree(db.alloc, h)
+				removes.delete(h)
+				db.setRemoving(h, false)
+			}()
 		}
 		db.wg.Done()
 		atomic.AddInt32(&activeVictors, -1)
 	}()
 
 	db.enter()
+
+	doLeave := true
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		if doLeave {
+			db.leave(&err)
+		}
+	}()
+
 	t, err := lldb.OpenBTree(db.alloc, collate, h)
 	if err != nil {
-		db.leave(&err)
 		finished = true
 		return
 	}
 
+	doLeave = false
 	if db.leave(&err) != nil {
 		return
 	}
@@ -690,11 +771,12 @@ func (db *DB) victor(removes Array, h int64) {
 		}
 
 		db.enter()
+		doLeave = true
 		if finished, err = t.DeleteAny(); finished || err != nil {
-			db.leave(&err)
 			return
 		}
 
+		doLeave = false
 		if db.leave(&err) != nil {
 			return
 		}
@@ -709,7 +791,12 @@ func (db *DB) Arrays() (a Array, err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	p, err := db.root()
 	if err != nil {
@@ -727,7 +814,12 @@ func (db *DB) Files() (a Array, err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	p, err := db.root()
 	if err != nil {
@@ -848,7 +940,12 @@ func (db *DB) Sync() (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.filer.Sync()
 }
@@ -859,7 +956,12 @@ func (db *DB) File(name string) (f File, err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	f, err = db.fileArray(false, name)
 	if err != nil {
@@ -877,7 +979,12 @@ func (db *DB) Inc(delta int64, array string, subscripts ...interface{}) (val int
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	a, err := db.array_(true, array, subscripts...)
 	if err != nil {
@@ -895,7 +1002,12 @@ func (db *DB) BeginUpdate() (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.filer.BeginUpdate()
 }
@@ -908,7 +1020,12 @@ func (db *DB) EndUpdate() (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.filer.EndUpdate()
 }
@@ -921,7 +1038,12 @@ func (db *DB) Rollback() (err error) {
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.filer.Rollback()
 }
@@ -960,7 +1082,12 @@ func (db *DB) Verify(bitmap lldb.Filer, log func(error) bool, stats *lldb.AllocS
 		return
 	}
 
-	defer db.leave(&err)
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		db.leave(&err)
+	}()
 
 	return db.alloc.Verify(bitmap, log, stats)
 }

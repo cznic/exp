@@ -20,9 +20,6 @@ when exp/locale materializes. Because of this, the dbm API doesn't yet allow
 to really define other than default collating of keys. At least some sort
 of client defined collating will be incorporated after Go 1.1 release.
 
-Support for Go 1.0.3 was not tested and is not planned. IOW, you must
-use Go tip. Dbm's target is Go 1.1.
-
 No serious attempts to profile and/or improve performance were made (TODO).
 
 	WARNING: THE DBM API IS SUBJECT TO CHANGE.
