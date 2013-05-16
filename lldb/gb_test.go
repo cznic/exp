@@ -36,6 +36,7 @@ func TestEncodeDecodeScalars(t *testing.T) {
 		{nil, "00"},
 		{false, "01"},
 		{true, "02"},
+		{math.Float64frombits(0), []byte{gbFloat0}},
 		{17., []byte{gbFloat2, 0x31, 0x40}},
 		{math.Float64frombits(0x4031320000000000), []byte{gbFloat3, 0x32, 0x31, 0x40}},
 		{math.Float64frombits(0x4031323300000000), []byte{gbFloat4, 0x33, 0x32, 0x31, 0x40}},
@@ -43,6 +44,7 @@ func TestEncodeDecodeScalars(t *testing.T) {
 		{math.Float64frombits(0x4031323334350000), []byte{gbFloat6, 0x35, 0x34, 0x33, 0x32, 0x31, 0x40}},
 		{math.Float64frombits(0x4031323334353600), []byte{gbFloat7, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x40}},
 		{math.Float64frombits(0x4031323334353637), []byte{gbFloat8, 0x37, 0x36, 0x35, 0x34, 0x33, 0x32, 0x31, 0x40}},
+		{0 + 0i, []byte{gbComplex0, gbComplex0}},
 		{17 + 17i, []byte{gbComplex2, 0x31, 0x40, gbComplex2, 0x31, 0x40}},
 		{complex(math.Float64frombits(0x4041420000000000), math.Float64frombits(0x4031320000000000)), []byte{gbComplex3, 0x42, 0x41, 0x40, gbComplex3, 0x32, 0x31, 0x40}},
 		{complex(math.Float64frombits(0x4041424300000000), math.Float64frombits(0x4031323300000000)), []byte{gbComplex4, 0x43, 0x42, 0x41, 0x40, gbComplex4, 0x33, 0x32, 0x31, 0x40}},
@@ -125,7 +127,7 @@ func TestEncodeDecodeScalars(t *testing.T) {
 		}
 
 		if g, e := len(dec), 1; g != e {
-			t.Fatal(g, e)
+			t.Fatalf("%d %d %#v", g, e, dec)
 		}
 
 		if g, ok := dec[0].([]byte); ok {
@@ -324,5 +326,39 @@ func TestCollateScalars(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestEncodingBug(t *testing.T) {
+	bits := uint64(0)
+	for i := 0; i <= 64; i++ {
+		encoded, err := EncodeScalars(math.Float64frombits(bits))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Logf("bits %016x, enc |% x|", bits, encoded)
+		decoded, err := DecodeScalars(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := len(decoded), 1; g != e {
+			t.Fatal(g, e)
+		}
+
+		f, ok := decoded[0].(float64)
+		if !ok {
+			t.Fatal(err)
+		}
+
+		if g, e := math.Float64bits(f), bits; g != e {
+			t.Fatal(err)
+		}
+
+		t.Log(f)
+
+		bits >>= 1
+		bits |= 1 << 63
 	}
 }

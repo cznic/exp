@@ -17,16 +17,20 @@ import (
 )
 
 const (
-	gbNull = iota
-	gbFalse
-	gbTrue
-	gbFloat2
-	gbFloat3
-	gbFloat4
-	gbFloat5
-	gbFloat6
-	gbFloat7
-	gbFloat8
+	gbNull     = iota // 0x00
+	gbFalse           // 0x01
+	gbTrue            // 0x02
+	gbFloat0          // 0x03
+	gbFloat1          // 0x04
+	gbFloat2          // 0x05
+	gbFloat3          // 0x06
+	gbFloat4          // 0x07
+	gbFloat5          // 0x08
+	gbFloat6          // 0x09
+	gbFloat7          // 0x0a
+	gbFloat8          // 0x0b
+	gbComplex0        // 0x0c
+	gbComplex1
 	gbComplex2
 	gbComplex3
 	gbComplex4
@@ -204,8 +208,8 @@ func EncodeScalars(scalars ...interface{}) (b []byte, err error) {
 }
 
 func encComplex(f complex128, b *[]byte) {
-	encFloatPrefix(gbComplex2, real(f), b)
-	encFloatPrefix(gbComplex2, imag(f), b)
+	encFloatPrefix(gbComplex0, real(f), b)
+	encFloatPrefix(gbComplex0, imag(f), b)
 }
 
 func encFloatPrefix(prefix byte, f float64, b *[]byte) {
@@ -216,12 +220,19 @@ func encFloatPrefix(prefix byte, f float64, b *[]byte) {
 		n |= u & 0xFF
 		u >>= 8
 	}
-	bits := mathutil.Max(9, mathutil.BitLenUint64(n))
-	encUintPrefix(prefix-1+byte((bits-1)>>3), n, b)
+	bits := mathutil.BitLenUint64(n)
+	if bits == 0 {
+		*b = append(*b, prefix)
+		return
+	}
+
+	// 0 1 2 3 4 5 6 7 8 9
+	// . 1 1 1 1 1 1 1 1 2
+	encUintPrefix(prefix+1+byte((bits-1)>>3), n, b)
 }
 
 func encFloat(f float64, b *[]byte) {
-	encFloatPrefix(gbFloat2, f, b)
+	encFloatPrefix(gbFloat0, f, b)
 }
 
 func encUint0(n uint64, b *[]byte) {
@@ -317,16 +328,19 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 		case gbTrue:
 			scalars = append(scalars, true)
 			b = b[1:]
-		case gbFloat2, gbFloat3, gbFloat4, gbFloat5, gbFloat6, gbFloat7, gbFloat8:
-			n := 3 + int(tag) - gbFloat2
+		case gbFloat0:
+			scalars = append(scalars, 0.0)
+			b = b[1:]
+		case gbFloat1, gbFloat2, gbFloat3, gbFloat4, gbFloat5, gbFloat6, gbFloat7, gbFloat8:
+			n := 1 + int(tag) - gbFloat0
 			if len(b) < n-1 {
 				goto corrupted
 			}
 
 			scalars = append(scalars, decodeFloat(b[1:n]))
 			b = b[n:]
-		case gbComplex2, gbComplex3, gbComplex4, gbComplex5, gbComplex6, gbComplex7, gbComplex8:
-			n := 3 + int(tag) - gbComplex2
+		case gbComplex0, gbComplex1, gbComplex2, gbComplex3, gbComplex4, gbComplex5, gbComplex6, gbComplex7, gbComplex8:
+			n := 1 + int(tag) - gbComplex0
 			if len(b) < n-1 {
 				goto corrupted
 			}
@@ -334,6 +348,16 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 			re := decodeFloat(b[1:n])
 			b = b[n:]
 
+			if len(b) == 0 {
+				goto corrupted
+			}
+
+			tag = b[0]
+			if tag < gbComplex0 || tag > gbComplex8 {
+				goto corrupted
+			}
+
+			n = 1 + int(tag) - gbComplex0
 			if len(b) < n-1 {
 				goto corrupted
 			}

@@ -7,7 +7,6 @@
 package dbm
 
 import (
-	"fmt"
 	"github.com/cznic/exp/lldb"
 )
 
@@ -56,9 +55,11 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 
 	doLeave := false
 	defer func() {
-		if e := recover(); e != nil {
-			err = fmt.Errorf("%v", e)
-		}
+		//TODO reenable
+		//		if e := recover(); e != nil {
+		//			rdbg("PANIC %T %#v", e, e)
+		//			err = fmt.Errorf("%v", e)
+		//		}
 		if doLeave {
 			db.leave(&err)
 		}
