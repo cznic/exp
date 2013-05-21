@@ -136,7 +136,7 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 		}
 	}()
 
-	if db.alloc, err = lldb.NewFLTAllocator(lldb.NewInnerFiler(filer, 16), lldb.FLTPowersOf2); err != nil {
+	if db.alloc, err = lldb.NewAllocator(lldb.NewInnerFiler(filer, 16)); err != nil {
 		return nil, &os.PathError{Op: "dbm.Create", Path: filer.Name(), Err: err}
 	}
 

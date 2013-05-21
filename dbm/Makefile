@@ -13,7 +13,7 @@ todo:
 	@grep -n BUG *.go || true
 
 clean:
-	rm -f *~ cov cov.html
+	rm -f *~ cov cov.html test.db
 
 gocov:
 	gocov test $(COV) | gocov-html > cov.html

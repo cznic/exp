@@ -12,7 +12,7 @@ import (
 
 func open00(name string, in *DB) (db *DB, err error) {
 	db = in
-	if db.alloc, err = lldb.NewFLTAllocator(lldb.NewInnerFiler(db.filer, 16), lldb.FLTPowersOf2); err != nil {
+	if db.alloc, err = lldb.NewAllocator(lldb.NewInnerFiler(db.filer, 16)); err != nil {
 		return nil, &os.PathError{Op: "dbm.Open", Path: name, Err: err}
 	}
 
