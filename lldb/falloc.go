@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/cznic/mathutil"
 	"github.com/cznic/zappy"
@@ -44,11 +45,43 @@ Blocks may be either free (currently unused) or allocated (currently used).
 Some blocks may eventually become virtual in a sense as they may not be
 realized in the storage (sparse files).
 
+Free Lists Table
+
+File starts with a FLT. This table records heads of 14 doubly linked free
+lists. The zero based index (I) vs minimal size of free blocks in that list,
+except the last one which registers free blocks of size 4112+ atoms:
+
+	MinSize == 2^I
+
+	For example 0 -> 1, 1 -> 2, ... 12 -> 4096.
+
+Each entry in the FLT is 8 bytes in netwtork order, MSB MUST be zero, ie. the
+slot value is effectively only 7 bytes. The value is the handle of the head of
+the respective doubly linked free list. The FLT size is 14*8 == 112(0x70)
+bytes. If the free blocks list for any particular size is empty, the respective
+FLT slot is zero. Sizes of free blocks in one list MUST NOT overlap with sizes
+of free lists in other list. For example, even though a free block of size 2
+technically is of minimal size >= 1, it MUST NOT be put to the list for slot 0
+(minimal size 1), but in slot 1( minimal size 2).
+
+	slot 0:		sizes [1, 2)
+	slot 1:		sizes [2, 4)
+	slot 2:		sizes [4, 8)
+	...
+	slot 11:	sizes [2048, 4096)
+	slot 12:	sizes [4096, 4112)
+	slot 13:	sizes [4112, inf)
+
+The last FLT slot collects all free blocks bigger than its minimal size. That
+still respects the 'no overlap' invariant.
+
 File blocks
 
 A block is a linear, contiguous sequence of atoms. The first and last atoms of
 a block provide information about, for example, whether the block is free or
-used, what is the size of the block, etc.  Details are discussed elsewhere.
+used, what is the size of the block, etc.  Details are discussed elsewhere. The
+first block of a file starts immediately after FLT, ie. at file offset
+112(0x70).
 
 Block atoms
 
@@ -57,14 +90,15 @@ bytes long. A consequence is that for a valid file:
 
  filesize == 0 (mod 16)
 
+The first atom of the first block is considered to be atom #1.
+
 Block handles
 
 A handle is an integer referring to a block. The reference is the number of the
-atom the block starts with plus one. Put in other way, considering 16 byte
-atoms:
+atom the block starts with. Put in other way:
 
- handle == offset / 16 + 1
- offset == 16 * (handle - 1)
+ handle == offset/16 -6
+ offset == 16 * (handle + 6)
 
 `offset` is the offset of the first byte of the block, measured in bytes
 - as in fseek(3). Handle has type `int64`, but only the lower 7 bytes may be
@@ -224,23 +258,43 @@ Note: No Allocator method returns io.EOF.
 */
 type Allocator struct {
 	f        Filer
-	flt      *flt
+	flt      flt
 	Compress bool   // enables content compression
 	zbuf     []byte // [de]compression buffer
 }
 
 // NewAllocator returns a new Allocator. To open an existing file, pass its
 // Filer. To create a "new" file, pass a Filer which file is of zero size.
-func NewAllocator(f Filer, flt FLT) (*Allocator, error) {
-	fltab, err := newFlt(flt)
-	if err != nil {
-		return nil, err
+func NewAllocator(f Filer) (a *Allocator, err error) {
+	a = &Allocator{f: f}
+	switch x := f.(type) {
+	case *RollbackFiler:
+		x.afterRollback = func() error { return a.flt.load(a.f, 0) }
+	case *ACIDFiler0:
+		x.RollbackFiler.afterRollback = func() error { return a.flt.load(a.f, 0) }
 	}
 
-	return &Allocator{
-		f:   f,
-		flt: fltab,
-	}, nil
+	sz, err := f.Size()
+	if err != nil {
+		return
+	}
+
+	a.flt.init()
+	if sz == 0 {
+		var b [fltSz]byte
+		if err = a.f.BeginUpdate(); err != nil {
+			return
+		}
+
+		if _, err = f.WriteAt(b[:], 0); err != nil {
+			a.f.Rollback()
+			return
+		}
+
+		return a, a.f.EndUpdate()
+	}
+
+	return a, a.flt.load(f, 0)
 }
 
 // Alloc allocates storage space for b and returns the handle of the new block
@@ -267,7 +321,7 @@ func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 
 func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 	rqAtoms := n2atoms(len(b))
-	if h, err = a.flt.find(int64(rqAtoms)); err != nil {
+	if h, err = a.flt.find(rqAtoms); err != nil {
 		return
 	}
 
@@ -447,7 +501,7 @@ func (a *Allocator) link(h, atoms int64) (err error) {
 		return
 	}
 
-	return a.flt.setHead(h, atoms)
+	return a.flt.setHead(h, atoms, a.f)
 }
 
 // Remove free block h from the free list
@@ -455,7 +509,7 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 	switch {
 	case p == 0 && n == 0:
 		// single item list, must be head
-		return a.flt.setHead(0, atoms)
+		return a.flt.setHead(0, atoms, a.f)
 	case p == 0 && n != 0:
 		// head of list (has next item[s])
 		if err = a.prev(n, 0); err != nil {
@@ -463,7 +517,7 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 		}
 
 		// new head
-		return a.flt.setHead(n, atoms)
+		return a.flt.setHead(n, atoms, a.f)
 	case p != 0 && n == 0:
 		// last item in list
 		return a.next(p, 0)
@@ -1241,7 +1295,7 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 	}
 
 	ok := fsz%16 == 0
-	totalAtoms := fsz / atomLen
+	totalAtoms := (fsz - fltSz) / atomLen
 	if !ok {
 		err = &ErrILSEQ{Type: ErrFileSize, Arg: fsz}
 		log(err)
@@ -1366,24 +1420,17 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 
 	}
 
-	// Phase 3 - using the flt.Report() check heads link to proper free
-	// blocks.  For every free block, walk the list, verify the {next,
-	// prev} links and turn the respective map bit off. After processing
-	// all free lists, the map bits count should be zero. Otherwise there
-	// are "lost" free blocks.
+	// Phase 3 - using the flt check heads link to proper free blocks.  For
+	// every free block, walk the list, verify the {next, prev} links and
+	// turn the respective map bit off. After processing all free lists,
+	// the map bits count should be zero. Otherwise there are "lost" free
+	// blocks.
 
 	var prev, next, fprev, fnext int64
-	rep, err := a.flt.Report()
-	if err != nil {
-		return
-	}
+	rep := a.flt
 
 	for _, list := range rep {
-		prev = 0
-		if next, err = list.Head(); err != nil {
-			return
-		}
-
+		prev, next = 0, list.head
 		for ; next != 0; prev, next = next, fnext {
 			if wasOn, err = bit(false, next); err != nil {
 				return
@@ -1408,7 +1455,7 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 					return
 				}
 
-				if min := list.MinSize(); atoms < min {
+				if min := list.minSize; atoms < min {
 					err = &ErrILSEQ{Type: ErrFLTSize, Off: h2off(next), Arg: atoms, Arg2: min}
 					log(err)
 					return
@@ -1470,4 +1517,116 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 	}
 
 	return
+}
+
+type fltSlot struct {
+	head    int64
+	minSize int64
+}
+
+func (f fltSlot) String() string {
+	return fmt.Sprintf("head %#x, minSize %#x\n", f.head, f.minSize)
+}
+
+type flt [14]fltSlot
+
+func (f *flt) init() {
+	sz := 1
+	for i := range *f {
+		f[i].minSize, f[i].head = int64(sz), 0
+		sz <<= 1
+	}
+	f[13].minSize = 4112
+}
+
+func (f *flt) load(fi Filer, off int64) (err error) {
+	//TODO buffers
+	var b [fltSz]byte
+	if _, err = fi.ReadAt(b[:], off); err != nil {
+		return
+	}
+
+	for i := range *f {
+		off := 8*i + 1
+		f[i].head = b2h(b[off:])
+	}
+	return
+}
+
+func (f *flt) find(rq int) (h int64, _ error) { //TODO -error
+	switch {
+	case rq < 1:
+		panic(rq)
+	case rq >= maxFLTRq:
+		h, f[13].head = f[13].head, 0
+		return
+	default:
+		g := f[mathutil.Log2Uint16(uint16(rq)):]
+		for i := range g {
+			p := &g[i]
+			if rq <= int(p.minSize) {
+				if h = p.head; h != 0 {
+					p.head = 0
+					return
+				}
+			}
+		}
+		return
+	}
+}
+
+func (f *flt) head(atoms int64) (h int64, _ error) { //TODO -error
+	switch {
+	case atoms < 1:
+		panic(atoms)
+	case atoms >= maxFLTRq:
+		return f[13].head, nil
+	default:
+		lg := mathutil.Log2Uint16(uint16(atoms))
+		g := f[lg:]
+		for i := range g {
+			if atoms < g[i+1].minSize {
+				return g[i].head, nil
+			}
+		}
+		panic("internal error")
+	}
+}
+
+func (f *flt) setHead(h, atoms int64, fi Filer) (err error) {
+	switch {
+	case atoms < 1:
+		panic(atoms)
+	case atoms >= maxFLTRq:
+		var b [7]byte //TODO buffers
+		if _, err = fi.WriteAt(h2b(b[:], h), 13*8+1); err != nil {
+			return
+		}
+
+		f[13].head = h
+		return
+	default:
+		lg := mathutil.Log2Uint16(uint16(atoms))
+		g := f[lg:]
+		for i := range f {
+			if atoms < g[i+1].minSize {
+				var b [7]byte //TODO buffers
+				if _, err = fi.WriteAt(h2b(b[:], h), 8*int64(i+lg)+1); err != nil {
+					return
+				}
+
+				g[i].head = h
+				return
+			}
+		}
+		panic("internal error")
+	}
+}
+
+func (f *flt) String() string {
+	a := []string{}
+	for i, v := range *f {
+		a = append(a, fmt.Sprintf("[%2d] %s", i, v))
+	}
+	return strings.Join(a, "")
 }

@@ -59,7 +59,7 @@ import (
 
 var (
 	_ Filer = &bitFiler{}      // Ensure bitFiler is a Filer.
-	_ Filer = &RollbackFiler{} // dtto
+	_ Filer = &RollbackFiler{} // ditto
 )
 
 const (
@@ -369,6 +369,10 @@ type RollbackFiler struct {
 	parent     Filer
 	tlevel     int // transaction nesting level, 0 == not in transaction
 	writerAt   io.WriterAt
+
+	// afterRollback, if not nil, is called after performing Rollback
+	// without errros.
+	afterRollback func() error
 }
 
 // NewRollbackFiler returns a RollbackFiler wrapping f.
@@ -537,6 +541,10 @@ func (r *RollbackFiler) Rollback() (err error) {
 		r.bitFiler = r.bitFiler.parent.(*bitFiler)
 	}
 	r.tlevel--
+	if f := r.afterRollback; f != nil {
+		return f()
+	}
+
 	return
 }
 

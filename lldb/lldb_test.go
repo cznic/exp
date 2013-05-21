@@ -161,11 +161,11 @@ func TestN2Padding(t *testing.T) {
 
 func TestH2Off(t *testing.T) {
 	tab := []struct{ h, off int64 }{
-		{-1, -32},
-		{0, -16},
-		{1, 0},
-		{2, 16},
-		{3, 32},
+		{-1, fltSz - 32},
+		{0, fltSz - 16},
+		{1, fltSz + 0},
+		{2, fltSz + 16},
+		{3, fltSz + 32},
 	}
 
 	for i, test := range tab {

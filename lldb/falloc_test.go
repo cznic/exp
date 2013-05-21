@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"runtime"
@@ -44,13 +43,13 @@ type pAllocator struct {
 	errors           []error
 	logger           func(error) bool
 	lastKnownGood    *MemFiler
-	lastKnownGoodFLT []FLTSlot
+	lastKnownGoodFLT flt
 	lastOp           string
 	stats            AllocStats
 }
 
-func newPAllocator(f Filer, flt FLT) (*pAllocator, error) {
-	a, err := NewAllocator(f, flt)
+func newPAllocator(f Filer) (*pAllocator, error) {
+	a, err := NewAllocator(f)
 	if err != nil {
 		return nil, err
 	}
@@ -86,21 +85,11 @@ func (a *pAllocator) preMortem(s string) {
 	if _, e = a.lastKnownGood.WriteAt(b, 0); e != nil {
 		return
 	}
-	var rep []FLTSlot
-	if rep, e = a.Allocator.flt.Report(); e != nil {
-		panic(e)
-	}
-	a.lastKnownGoodFLT = make([]FLTSlot, len(rep))
-	copy(a.lastKnownGoodFLT, rep)
+	a.lastKnownGoodFLT = a.flt
 	a.lastOp = s
 }
 
 func (a *pAllocator) Alloc(b []byte) (handle int64, err error) {
-	//if err = a.Allocator.Verify(NewMemFiler(), a.logger, nil); err != nil {
-	//err = fmt.Errorf("Alloc: pre-dump check fail! '%s'", err)
-	//return
-	//}
-
 	if *allocRndDump {
 		a.preMortem("")
 		defer func() { a.lastOp = fmt.Sprintf("Alloc(%d bytes): h %#x", len(b), handle) }()
@@ -120,11 +109,6 @@ func (a *pAllocator) Alloc(b []byte) (handle int64, err error) {
 }
 
 func (a *pAllocator) Free(handle int64) (err error) {
-	//if err = a.Allocator.Verify(NewMemFiler(), a.logger, nil); err != nil {
-	//err = fmt.Errorf("Free: pre-dump check fail! '%s'", err)
-	//return
-	//}
-
 	if *allocRndDump {
 		a.preMortem(fmt.Sprintf("Free(h %#x)", handle))
 	}
@@ -143,11 +127,6 @@ func (a *pAllocator) Free(handle int64) (err error) {
 }
 
 func (a *pAllocator) Realloc(handle int64, b []byte) (err error) {
-	//if err = a.Allocator.Verify(NewMemFiler(), a.logger, nil); err != nil {
-	//err = fmt.Errorf("Realloc: pre-dump check fail! '%s'", err)
-	//return
-	//}
-
 	if *allocRndDump {
 		a.preMortem(fmt.Sprintf("Realloc(h %#x, %d bytes)", handle, len(b)))
 	}
@@ -209,33 +188,16 @@ func dump(a *pAllocator, t *testing.T) {
 
 	t.Log("Last known good FLT")
 	for _, slot := range a.lastKnownGoodFLT {
-		h, err := slot.Head()
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		if h != 0 {
-			t.Logf("min %d head %#x off %#x", slot.MinSize(), h, h2off(h))
+		if h := slot.head; h != 0 {
+			t.Logf("min %d head %#x off %#x", slot.minSize, h, h2off(h))
 		}
 	}
 
 	t.Log("Current FLT")
-	r, err := a.flt.Report()
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
+	r := a.flt
 	for _, slot := range r {
-		h, err := slot.Head()
-		if err != nil {
-			t.Error(err)
-			return
-		}
-
-		if h != 0 {
-			t.Logf("min %d head %#x off %#x", slot.MinSize(), h, h2off(h))
+		if h := slot.head; h != 0 {
+			t.Logf("min %d head %#x off %#x", slot.minSize, h, h2off(h))
 		}
 	}
 	t.Logf("Last op: %q", a.lastOp)
@@ -369,100 +331,82 @@ func TestVerify0(t *testing.T) {
 		//       00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
 	}
 
-	for kind := 0; kind < fltInvalidKind; kind++ {
-		for i, test := range tab {
-			errors := []error{}
+	for i, test := range tab {
+		errors := []error{}
 
-			f := NewMemFiler()
-			b := s2b(test)
-			n := len(b)
-			if n == 0 {
-				t.Fatal(n)
-			}
-
-			if m, err := f.ReadFrom(bytes.NewBuffer(b)); m != int64(n) || err != nil {
-				t.Fatal(m, err)
-			}
-
-			sz, err := f.Size()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if g, e := sz, int64(n); g != e {
-				t.Fatal(g, e)
-			}
-
-			flt, err := newCannedFLT(NewMemFiler(), kind)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			a, err := newPAllocator(f, flt)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = a.Verify(
-				NewMemFiler(),
-				func(err error) bool {
-					if err == nil {
-						t.Fatal("nil error")
-					}
-					errors = append(errors, err)
-					return false
-				},
-				nil,
-			)
-			if err == nil {
-				t.Fatal(i, "unexpected success")
-			}
-
-			t.Log(i, err, errors)
+		f := NewMemFiler()
+		b := s2b(test)
+		b = append(make([]byte, fltSz), b...)
+		n := len(b)
+		if n == 0 {
+			t.Fatal(n)
 		}
+
+		if m, err := f.ReadFrom(bytes.NewBuffer(b)); m != int64(n) || err != nil {
+			t.Fatal(m, err)
+		}
+
+		sz, err := f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := sz, int64(n); g != e {
+			t.Fatal(g, e)
+		}
+
+		a, err := newPAllocator(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = a.Verify(
+			NewMemFiler(),
+			func(err error) bool {
+				if err == nil {
+					t.Fatal("nil error")
+				}
+				errors = append(errors, err)
+				return false
+			},
+			nil,
+		)
+		if err == nil {
+			t.Fatal(i, "unexpected success")
+		}
+
+		t.Log(i, err, errors)
 	}
 }
 
 func TestVerify1(t *testing.T) {
-	for kind := 0; kind < fltInvalidKind; kind++ {
-		f := NewMemFiler()
-		bitmap := NewMemFiler()
-		if n, err := bitmap.WriteAt([]byte{0}, 0); n != 1 || err != nil {
-			t.Fatal(n, err)
-		}
+	f := NewMemFiler()
+	bitmap := NewMemFiler()
+	if n, err := bitmap.WriteAt([]byte{0}, 0); n != 1 || err != nil {
+		t.Fatal(n, err)
+	}
 
-		flt, err := newCannedFLT(NewMemFiler(), kind)
-		if err != nil {
-			t.Fatal(err)
-		}
+	a, err := newPAllocator(f)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		a, err := newPAllocator(f, flt)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if err := a.Verify(
-			bitmap,
-			func(error) bool {
-				panic("intrnal error")
-			},
-			nil,
-		); err == nil {
-			t.Fatal("unexpected success")
-		}
+	if err := a.Verify(
+		bitmap,
+		func(error) bool {
+			panic("intrnal error")
+		},
+		nil,
+	); err == nil {
+		t.Fatal("unexpected success")
 	}
 }
 
-func repDump(a []FLTSlot) string {
+func repDump(a flt) string {
 	b := []string{}
 	for _, v := range a {
-		h, err := v.Head()
-		if err != nil {
-			panic(err)
-		}
-
-		if h != 0 {
-			b = append(b, fmt.Sprintf("min:%d, h:%d", v.MinSize(), h))
+		if h := v.head; h != 0 {
+			b = append(b, fmt.Sprintf("min:%d, h:%d", v.minSize, h))
 		}
 	}
 	return strings.Join(b, ";")
@@ -572,6 +516,7 @@ func TestVerify2(t *testing.T) {
 
 		f := NewMemFiler()
 		b := s2b(test)
+		b = append(make([]byte, fltSz), b...)
 		n := len(b)
 		if n == 0 {
 			t.Fatal(n)
@@ -590,18 +535,13 @@ func TestVerify2(t *testing.T) {
 			t.Fatal(g, e)
 		}
 
-		flt, err := newCannedFLT(NewMemFiler(), FLTFull)
+		a, err := newPAllocator(f)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		flt.slots[0].SetHead(2) // minSize:1, head: 2
-		flt.slots[1].SetHead(4) // minSize:2, head: 4
-		a, err := newPAllocator(f, flt)
-		if err != nil {
-			t.Fatal(err)
-		}
-
+		a.flt.setHead(2, 1, a.f)
+		a.flt.setHead(4, 2, a.f)
 		err = a.Verify(
 			NewMemFiler(),
 			func(err error) bool {
@@ -763,48 +703,37 @@ func TestAllocatorAlloc0(t *testing.T) {
 				"c0 1d 10 00 d0 1d 10 00  e0 1d 10 00 f0 15 10 01"},
 	}
 
-	for kind := 0; kind < fltInvalidKind; kind++ {
-		for i, test := range tab {
-			f := func(compress bool, e []byte) {
-				f := NewMemFiler()
-				flt, err := newCannedFLT(NewMemFiler(), kind)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				a, err := newPAllocator(f, flt)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				a.Compress = compress
-				h, err := a.Alloc(s2b(test.b))
-				if err != nil {
-					t.Fatal(i, err)
-				}
-
-				if g, e := h, test.h; g != e {
-					t.Fatal(i, g, e)
-				}
-
-				if g := mfBytes(f); !bytes.Equal(g, e) {
-					t.Fatalf("\ni: %d compress: %t\ng:\n%se:\n%s", i, compress, hex.Dump(g), hex.Dump(e))
-				}
+	for i, test := range tab {
+		f := func(compress bool, e []byte) {
+			f := NewMemFiler()
+			a, err := newPAllocator(f)
+			if err != nil {
+				t.Fatal(err)
 			}
-			f(false, s2b(test.f))
-			f(true, s2b(test.fc))
+
+			a.Compress = compress
+			h, err := a.Alloc(s2b(test.b))
+			if err != nil {
+				t.Fatalf("%d %#v\n%s", i, err, hex.Dump(mfBytes(f)))
+			}
+
+			if g, e := h, test.h; g != e {
+				t.Fatal(i, g, e)
+			}
+
+			g := mfBytes(f)
+			if g = g[fltSz:]; !bytes.Equal(g, e) {
+				t.Fatalf("\ni: %d compress: %t\ng:\n%se:\n%s", i, compress, hex.Dump(g), hex.Dump(e))
+			}
 		}
+		f(false, s2b(test.f))
+		f(true, s2b(test.fc))
 	}
 }
 
 func TestAllocatorMakeUsedBlock(t *testing.T) {
 	f := NewMemFiler()
-	flt, err := newCannedFLT(NewMemFiler(), FLTFull)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	a, err := NewAllocator(f, flt)
+	a, err := NewAllocator(f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -841,302 +770,291 @@ func TestAllocatorRnd(t *testing.T) {
 	N := *testN
 
 	for cc := 0; cc < 2; cc++ {
-		for kind := 0; kind < fltInvalidKind; kind++ {
-			rng := rand.New(rand.NewSource(42))
-			f := NewMemFiler()
-			flt, err := newCannedFLT(NewMemFiler(), kind)
-			if err != nil {
-				t.Fatal(err)
-			}
+		rng := rand.New(rand.NewSource(42))
+		f := NewMemFiler()
+		a, err := newPAllocator(f)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			a, err := newPAllocator(f, flt)
-			if err != nil {
-				t.Fatal(err)
-			}
+		balance := 0
 
-			balance := 0
-
-			bad := func() bool {
-				if a.Compress {
-					return false
-				}
-
-				actual := a.stats.TotalAtoms - a.stats.FreeAtoms - a.stats.Relocations
-				if int64(balance) != actual {
-					t.Logf("balance: %d, actual %d\n%#v", balance, actual, a.stats)
-					return true
-				}
-
+		bad := func() bool {
+			if a.Compress {
 				return false
 			}
 
-			if cc != 0 {
-				a.Compress = true
+			actual := a.stats.TotalAtoms - a.stats.FreeAtoms - a.stats.Relocations
+			if int64(balance) != actual {
+				t.Logf("balance: %d, actual %d\n%#v", balance, actual, a.stats)
+				return true
 			}
-			ref := map[int64][]byte{}
 
-			for pass := 0; pass < 2; pass++ {
+			return false
+		}
 
-				// A) Alloc N blocks
-				for i := 0; i < N; i++ {
-					rq := rng.Int31n(int32(*allocRndTestLimit))
-					if rq%127 == 0 {
-						rq = 3 * maxRq / 4
-					}
-					if rq%11 == 0 {
-						rq %= 23
-					}
-					if hl := *allocRndTestHardLimit; hl != 0 {
-						rq = rq % int32(hl)
-					}
-					b := make([]byte, rq)
-					for j := range b {
-						b[j] = byte(rng.Int())
-					}
-					if rq > 300 {
-						for i := 100; i < 200; i++ {
-							b[i] = 'A' // give compression a chance
-						}
-					}
+		if cc != 0 {
+			a.Compress = true
+		}
+		ref := map[int64][]byte{}
 
-					balance += n2atoms(len(b))
-					h, err := a.Alloc(b)
-					if err != nil || bad() {
-						dump(a, t)
-						t.Fatalf(
-							"A) N %d, kind %d, pass %d, i:%d, len(b):%d(%#x), err %v",
-							N, kind, pass, i, len(b), len(b), err,
-						)
-					}
+		for pass := 0; pass < 2; pass++ {
 
-					ref[h] = b
+			// A) Alloc N blocks
+			for i := 0; i < N; i++ {
+				rq := rng.Int31n(int32(*allocRndTestLimit))
+				if rq%127 == 0 {
+					rq = 3 * maxRq / 4
 				}
-
-				var rb []byte
-
-				// B) Check them back
-				for h, wb := range ref {
-					if rb, err = a.Get(rb, h); err != nil {
-						dump(a, t)
-						t.Fatal("B)", err)
-					}
-
-					if !bytes.Equal(rb, wb) {
-						dump(a, t)
-						t.Fatalf("B) h %d", h)
+				if rq%11 == 0 {
+					rq %= 23
+				}
+				if hl := *allocRndTestHardLimit; hl != 0 {
+					rq = rq % int32(hl)
+				}
+				b := make([]byte, rq)
+				for j := range b {
+					b[j] = byte(rng.Int())
+				}
+				if rq > 300 {
+					for i := 100; i < 200; i++ {
+						b[i] = 'A' // give compression a chance
 					}
 				}
 
-				nf := 0
-				// C) Free every third block
-				for _, v := range stableRef(ref) {
-					h, b := v.h, v.b
-					if rng.Int()%3 != 0 {
-						continue
-					}
-
-					balance -= n2atoms(len(b))
-					if err = a.Free(h); err != nil || bad() {
-						dump(a, t)
-						t.Fatal(err)
-					}
-
-					delete(ref, h)
-					nf++
+				balance += n2atoms(len(b))
+				h, err := a.Alloc(b)
+				if err != nil || bad() {
+					dump(a, t)
+					t.Fatalf(
+						"A) N %d, kind %d, pass %d, i:%d, len(b):%d(%#x), err %v",
+						N, 0, pass, i, len(b), len(b), err,
+					)
 				}
 
-				// D) Check them back
-				for h, wb := range ref {
-					if rb, err = a.Get(rb, h); err != nil {
-						dump(a, t)
-						t.Fatal("D)", err)
-					}
+				ref[h] = b
+			}
 
-					if !bytes.Equal(rb, wb) {
-						dump(a, t)
-						t.Fatalf("D) h %d", h)
-					}
+			var rb []byte
+
+			// B) Check them back
+			for h, wb := range ref {
+				if rb, err = a.Get(rb, h); err != nil {
+					dump(a, t)
+					t.Fatal("B)", err)
 				}
 
-				// E) Resize every block remaining
-				for _, v := range stableRef(ref) {
-					h, wb := v.h, v.b
-					len0 := len(wb)
-					switch rng.Int() & 1 {
-					case 0:
-						wb = wb[:len(wb)*3/4]
-					case 1:
-						wb = append(wb, wb...)
-					}
-					if len(wb) > maxRq {
-						wb = wb[:maxRq]
-					}
-
-					for j := range wb {
-						wb[j] = byte(rng.Int())
-					}
-					if len(wb) > 300 {
-						for i := 100; i < 200; i++ {
-							wb[i] = 'D' // give compression a chance
-						}
-					}
-					a0, a1 := n2atoms(len0), n2atoms(len(wb))
-					balance = balance - a0 + a1
-					if err := a.Realloc(h, wb); err != nil || bad() {
-						dump(a, t)
-						t.Fatalf(
-							"D) h:%#x, len(b):%#4x, len(wb): %#x, err %s",
-							h, len0, len(wb), err,
-						)
-					}
-
-					ref[h] = wb
-				}
-
-				// F) Check them back
-				for h, wb := range ref {
-					if rb, err = a.Get(rb, h); err != nil {
-						dump(a, t)
-						t.Fatal("E)", err)
-					}
-
-					if !bytes.Equal(rb, wb) {
-						dump(a, t)
-						t.Fatalf("E) h %d", h)
-					}
+				if !bytes.Equal(rb, wb) {
+					dump(a, t)
+					t.Fatalf("B) h %d", h)
 				}
 			}
 
-			if cc == 0 {
-				sz, err := f.Size()
-				if err != nil {
-					t.Fatal(err)
+			nf := 0
+			// C) Free every third block
+			for _, v := range stableRef(ref) {
+				h, b := v.h, v.b
+				if rng.Int()%3 != 0 {
+					continue
 				}
 
-				t.Logf(
-					"kind %d, AllocAtoms %7d, AllocBytes %7d, FreeAtoms %7d, Relocations %7d, TotalAtoms %7d, f.Size %7d, space eff %.2f%%",
-					kind, a.stats.AllocAtoms, a.stats.AllocBytes, a.stats.FreeAtoms, a.stats.Relocations, a.stats.TotalAtoms, sz, 100*float64(a.stats.AllocBytes)/float64(sz),
-				)
-			}
-			// Free everything
-			for h, b := range ref {
 				balance -= n2atoms(len(b))
 				if err = a.Free(h); err != nil || bad() {
 					dump(a, t)
 					t.Fatal(err)
 				}
+
+				delete(ref, h)
+				nf++
 			}
 
-			sz, err := a.f.Size()
+			// D) Check them back
+			for h, wb := range ref {
+				if rb, err = a.Get(rb, h); err != nil {
+					dump(a, t)
+					t.Fatal("D)", err)
+				}
+
+				if !bytes.Equal(rb, wb) {
+					dump(a, t)
+					t.Fatalf("D) h %d", h)
+				}
+			}
+
+			// E) Resize every block remaining
+			for _, v := range stableRef(ref) {
+				h, wb := v.h, v.b
+				len0 := len(wb)
+				switch rng.Int() & 1 {
+				case 0:
+					wb = wb[:len(wb)*3/4]
+				case 1:
+					wb = append(wb, wb...)
+				}
+				if len(wb) > maxRq {
+					wb = wb[:maxRq]
+				}
+
+				for j := range wb {
+					wb[j] = byte(rng.Int())
+				}
+				if len(wb) > 300 {
+					for i := 100; i < 200; i++ {
+						wb[i] = 'D' // give compression a chance
+					}
+				}
+				a0, a1 := n2atoms(len0), n2atoms(len(wb))
+				balance = balance - a0 + a1
+				if err := a.Realloc(h, wb); err != nil || bad() {
+					dump(a, t)
+					t.Fatalf(
+						"D) h:%#x, len(b):%#4x, len(wb): %#x, err %s",
+						h, len0, len(wb), err,
+					)
+				}
+
+				ref[h] = wb
+			}
+
+			// F) Check them back
+			for h, wb := range ref {
+				if rb, err = a.Get(rb, h); err != nil {
+					dump(a, t)
+					t.Fatal("E)", err)
+				}
+
+				if !bytes.Equal(rb, wb) {
+					dump(a, t)
+					t.Fatalf("E) h %d", h)
+				}
+			}
+		}
+
+		if cc == 0 {
+			sz, err := f.Size()
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if g, e := sz, int64(0); g != e {
+			t.Logf(
+				"kind %d, AllocAtoms %7d, AllocBytes %7d, FreeAtoms %7d, Relocations %7d, TotalAtoms %7d, f.Size %7d, space eff %.2f%%",
+				0, a.stats.AllocAtoms, a.stats.AllocBytes, a.stats.FreeAtoms, a.stats.Relocations, a.stats.TotalAtoms, sz, 100*float64(a.stats.AllocBytes)/float64(sz),
+			)
+		}
+		// Free everything
+		for h, b := range ref {
+			balance -= n2atoms(len(b))
+			if err = a.Free(h); err != nil || bad() {
 				dump(a, t)
-				t.Fatal(g, e)
+				t.Fatal(err)
 			}
+		}
 
+		sz, err := a.f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if g, e := sz, int64(fltSz); g != e {
+			dump(a, t)
+			t.Fatal(g, e)
 		}
 	}
 }
 
 func TestRollbackAllocator(t *testing.T) {
-	for kind := 0; kind < fltInvalidKind; kind++ {
-		f := NewMemFiler()
-		var r *RollbackFiler
-		r, err := NewRollbackFiler(f,
-			func(sz int64) (err error) {
-				if err = f.Truncate(sz); err != nil {
-					return err
-				}
+	f := NewMemFiler()
+	var r *RollbackFiler
+	r, err := NewRollbackFiler(f,
+		func(sz int64) (err error) {
+			if err = f.Truncate(sz); err != nil {
+				return err
+			}
 
-				return f.Sync()
-			},
-			f,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+			return f.Sync()
+		},
+		f,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if err := r.BeginUpdate(); err != nil { // BeginUpdate 0->1
-			t.Fatal(err)
-		}
+	if err := r.BeginUpdate(); err != nil { // BeginUpdate 0->1
+		t.Fatal(err)
+	}
 
-		a, err := NewFLTAllocator(r, kind)
-		if err != nil {
-			t.Fatal(err)
-		}
+	a, err := NewAllocator(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		h, err := a.Alloc(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+	h, err := a.Alloc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if h != 1 {
-			t.Fatal(h)
-		}
+	if h != 1 {
+		t.Fatal(h)
+	}
 
-		// | 1 |
+	// | 1 |
 
-		h, err = a.Alloc(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+	h, err = a.Alloc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if h != 2 {
-			t.Fatal(h)
-		}
+	if h != 2 {
+		t.Fatal(h)
+	}
 
-		// | 1 | 2 |
-		h, err = a.Alloc(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// | 1 | 2 |
+	h, err = a.Alloc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if h != 3 {
-			t.Fatal(h)
-		}
+	if h != 3 {
+		t.Fatal(h)
+	}
 
-		// | 1 | 2 | 3 |
-		if err = a.Free(2); err != nil {
-			t.Fatal(err)
-		}
+	// | 1 | 2 | 3 |
+	if err = a.Free(2); err != nil {
+		t.Fatal(err)
+	}
 
-		// | 1 | free | 3 |
-		if err := r.BeginUpdate(); err != nil { // BeginUpdate 1->2
-			t.Fatal(err)
-		}
+	// | 1 | free | 3 |
+	if err := r.BeginUpdate(); err != nil { // BeginUpdate 1->2
+		t.Fatal(err)
+	}
 
-		h, err = a.Alloc(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+	h, err = a.Alloc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if h != 2 {
-			t.Fatal(h)
-		}
+	if h != 2 {
+		t.Fatal(h)
+	}
 
-		// | 1 | 2 | 3 |
-		if err := r.Rollback(); err != nil { // Rollback 2->1
-			t.Fatal(err)
-		}
+	// | 1 | 2 | 3 |
+	if err := r.Rollback(); err != nil { // Rollback 2->1
+		t.Fatal(err)
+	}
 
-		// | 1 | free | 3 |
-		h, err = a.Alloc(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// | 1 | free | 3 |
+	h, err = a.Alloc(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if h != 2 {
-			t.Fatal(h)
-		}
+	if h != 2 {
+		t.Fatal(h)
+	}
 
-		// | 1 | 2 | 3 |
-		if err := a.Verify(NewMemFiler(), nil, nil); err != nil {
-			t.Fatal(err)
-		}
-
+	// | 1 | 2 | 3 |
+	if err := a.Verify(NewMemFiler(), nil, nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1148,7 +1066,7 @@ func benchmarkAllocatorAlloc(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	a, err := NewAllocator(f)
 	if err != nil {
 		b.Error(err)
 		return
@@ -1337,7 +1255,7 @@ func benchmarkAllocatorRndFree(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	a, err := NewAllocator(f)
 	if err != nil {
 		b.Error(err)
 		return
@@ -1550,7 +1468,7 @@ func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	a, err := NewAllocator(f)
 	if err != nil {
 		b.Error(err)
 		return
@@ -1706,7 +1624,6 @@ func BenchmarkAllocatorRndGetRollbackFiler1e3(b *testing.B) {
 }
 
 func benchmarkAllocatorRndGetACIDFiler(b *testing.B, sz int) {
-	dbg("%v: %d", now(), b.N)
 	os.Remove(testDbName)
 	os.Remove(walName)
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -1754,125 +1671,170 @@ func BenchmarkAllocatorRndGetACIDFiler1e3(b *testing.B) {
 	benchmarkAllocatorRndGetACIDFiler(b, 1e3)
 }
 
-func TestBug20130511(t *testing.T) {
-	var (
-		data       []byte
-		maxHandles = 63 // < 63 passes
-		dsz        = 65536
-		pollN      = 100
-		filer      Filer
-		a          *Allocator
-		pollcnt    int
-		handles    = []int64{}
-	)
+func TestFltFind(t *testing.T) {
+	var f flt
 
-	data, err := ioutil.ReadFile("lab/1/data")
-	if err != nil {
-		t.Fatal(err)
+	f.init()
+	if h, _ := f.find(1); h != 0 {
+		t.Fatal(h)
 	}
 
-	bu := func() {
-		if err := filer.BeginUpdate(); err != nil {
-			t.Fatal(err)
-		}
+	// [0]
+	f.init()
+	f[0].head = 1
+	if h, _ := f.find(1); h != 1 || f[0].head != 0 {
+		t.Fatal(h)
 	}
 
-	eu := func() {
-		if err := filer.EndUpdate(); err != nil {
-			t.Fatal(err)
-		}
+	f.init()
+	f[0].head = 1
+	if h, _ := f.find(2); h != 0 || f[0].head == 0 {
+		t.Fatal(h)
 	}
 
-	poll := func() {
-		pollcnt++
-		if pollcnt%pollN == 0 {
-			eu()
-			bu()
-		}
+	// [1]
+	f.init()
+	f[1].head = 1
+	if h, _ := f.find(1); h != 1 || f[1].head != 0 {
+		t.Fatal("\n", f, h)
 	}
 
-	seq := 0
-	alloc := func(b []byte) {
-		seq++
-		b[0] = byte(seq)
-		h, err := a.Alloc(b)
-		if err != nil {
-			t.Fatalf("alloc(%#x): %v", len(b), err)
-		}
-
-		handles = append(handles, h)
-		t.Logf("alloc(%#x) -> %#x, seq %#x\n", len(b), h, seq)
-		poll()
+	f.init()
+	f[1].head = 1
+	if h, _ := f.find(2); h != 1 || f[1].head != 0 {
+		t.Fatalf("\n%s\n%d", f, h)
 	}
 
-	wal, err := ioutil.TempFile("", "")
-	if err != nil {
-		t.Fatal(err)
+	f.init()
+	f[1].head = 1
+	if h, _ := f.find(3); h != 0 || f[1].head == 0 {
+		t.Fatal(h)
 	}
 
-	filer, err = NewACIDFiler(NewMemFiler(), wal)
-	if err != nil {
-		t.Fatal(err)
+	// [2]
+	f.init()
+	f[2].head = 1
+	if h, _ := f.find(1); h != 1 || f[2].head != 0 {
+		t.Fatal(h)
 	}
 
-	bu()
-	a, err = NewFLTAllocator(filer, FLTFull)
-	if err != nil {
-		t.Fatal(err)
+	f.init()
+	f[2].head = 1
+	if h, _ := f.find(2); h != 1 || f[2].head != 0 {
+		t.Fatal(h)
 	}
 
-	a.Compress = true
-
-	t.Logf("%T %#v", a, a)
-	var o Filer = a.f
-	t.Logf("%T %#v", o, o)
-	o = o.(*InnerFiler).outer
-	t.Logf("%T %#v", o, o)
-	o = o.(*ACIDFiler0).RollbackFiler
-	t.Logf("%T %#v", o, o)
-
-	runtime.GC()
-	rng := rand.New(rand.NewSource(42))
-
-	for len(handles) < maxHandles {
-		alloc(data[:rng.Intn(dsz+1)])
-	}
-	for len(handles) > 31 { //maxHandles/2 {
-		if len(handles) < 2 {
-			break
-		}
-
-		x := rng.Intn(len(handles))
-		h := handles[x]
-		ln := len(handles)
-		handles[x] = handles[ln-1]
-		handles = handles[:ln-1]
-		err := a.Free(h)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		t.Logf("free(%#x)", h)
-		poll()
-	}
-	for _, h := range handles[:6] {
-		ln := rng.Intn(dsz + 1)
-		err := a.Realloc(h, data[:ln])
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		t.Logf("realloc(h:%#x, sz:%#x)", h, ln)
-		poll()
+	f.init()
+	f[2].head = 1
+	if h, _ := f.find(3); h != 1 || f[2].head != 0 {
+		t.Fatal(h)
 	}
 
-	for len(handles) < maxHandles {
-		alloc(data[:rng.Intn(dsz+1)])
+	f.init()
+	f[2].head = 1
+	if h, _ := f.find(4); h != 1 || f[2].head != 0 {
+		t.Fatal(h)
 	}
-	eu()
 
-	t.Logf("PeakWALSize  %d", filer.(*ACIDFiler0).PeakWALSize())
-	fn := wal.Name()
-	wal.Close()
-	os.Remove(fn)
+	f.init()
+	f[2].head = 1
+	if h, _ := f.find(5); h != 0 || f[2].head == 0 {
+		t.Fatal(h)
+	}
+}
+
+func TestFltHead(t *testing.T) {
+	var f flt
+	f.init()
+	if h, _ := f.head(1); h != 0 {
+		t.Fatal(h)
+	}
+
+	// [0]
+	f.init()
+	f[0].head = 1
+	if h, _ := f.head(1); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[0].head = 1
+	if h, _ := f.head(2); h != 0 {
+		t.Fatal(h)
+	}
+
+	// [1]
+	f.init()
+	f[1].head = 1
+	if h, _ := f.head(1); h != 0 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[1].head = 1
+	if h, _ := f.head(2); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[1].head = 1
+	if h, _ := f.head(3); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[1].head = 1
+	if h, _ := f.head(4); h != 0 {
+		t.Fatal(h)
+	}
+
+	// [2]
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(1); h != 0 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(2); h != 0 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(3); h != 0 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(4); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(5); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(6); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(7); h != 1 {
+		t.Fatal(h)
+	}
+
+	f.init()
+	f[2].head = 1
+	if h, _ := f.head(8); h != 0 {
+		t.Fatal(h)
+	}
+
 }

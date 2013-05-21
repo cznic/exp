@@ -886,49 +886,42 @@ func TestBTreeClear(t *testing.T) {
 func TestBTreeRemove(t *testing.T) {
 	N := int64(*testN)
 
-	for kind := 0; kind < fltInvalidKind; kind++ {
-		for n := int64(0); n <= N; n = n*3/2 + 1 {
-			f := NewMemFiler()
-			flt, err := newCannedFLT(f, kind)
-			if err != nil {
+	for n := int64(0); n <= N; n = n*3/2 + 1 {
+		f := NewMemFiler()
+		store, err := NewAllocator(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sz0, err := f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tree, handle, err := CreateBTree(store, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i := int64(0); i < n; i++ {
+			k := append(make([]byte, kKV), enc8(10*i+1)...)
+			v := append(make([]byte, kKV+1), enc8(10*i+2)...)
+			if err = tree.Set(k, v); err != nil {
 				t.Fatal(err)
 			}
+		}
 
-			sz0, err := f.Size()
-			if err != nil {
-				t.Fatal(err)
-			}
+		if err = RemoveBTree(store, handle); err != nil {
+			t.Fatal(err)
+		}
 
-			store, err := NewAllocator(f, flt)
-			if err != nil {
-				t.Fatal(err)
-			}
+		sz, err := f.Size()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			tree, handle, err := CreateBTree(store, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			for i := int64(0); i < n; i++ {
-				k := append(make([]byte, kKV), enc8(10*i+1)...)
-				v := append(make([]byte, kKV+1), enc8(10*i+2)...)
-				if err = tree.Set(k, v); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			if err = RemoveBTree(store, handle); err != nil {
-				t.Fatal(err)
-			}
-
-			sz, err := f.Size()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if g, e := sz-sz0, int64(0); g != e {
-				t.Fatal(g, e)
-			}
+		if g, e := sz-sz0, int64(0); g != e {
+			t.Fatal(g, e)
 		}
 	}
 }
@@ -1268,7 +1261,7 @@ func benchmarkBTreeSetFiler(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewFLTAllocator(f, FLTPowersOf2)
+	a, err := NewAllocator(f)
 	if err != nil {
 		b.Error(err)
 		return

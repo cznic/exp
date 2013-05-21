@@ -26,6 +26,15 @@ func doubleTrouble(first, second error) error {
 // only or via a mutex. BeginUpdate, EndUpdate and Rollback must be either all
 // implemented by a Filer for structural integrity - or they should be all
 // no-ops; where/if that requirement is relaxed.
+//
+// If a Filer wraps another Filer implementation, it usually invokes the same
+// methods on the "inner" one, after some possible argument translations etc.
+// If a Filer implements the structural transactions handling methods
+// (BeginUpdate, EndUpdate and Rollback) as no-ops _and_ wraps another Filer:
+// it then still MUST invoke those methods on the inner Filer. This is
+// important for the case where a RollbackFiler exists somewhere down the
+// chain.  It's also important for an Allocator - to know when it must
+// invalidate its FLT cache.
 type Filer interface {
 	// BeginUpdate increments the "nesting" counter (initially zero). Every
 	// call to BeginUpdate must be eventually "balanced" by exactly one of
@@ -131,9 +140,8 @@ func NewInnerFiler(outer Filer, off int64) *InnerFiler { return &InnerFiler{oute
 // BeginUpdate implements Filer.
 func (f *InnerFiler) BeginUpdate() error { return f.outer.BeginUpdate() }
 
-// Close implements Filer. Notice: InnerFiler.Close is a nop as the actual Close can
-// be performed only by the outer Filer.
-func (f *InnerFiler) Close() (err error) { return }
+// Close implements Filer.
+func (f *InnerFiler) Close() (err error) { return f.outer.Close() }
 
 // EndUpdate implements Filer.
 func (f *InnerFiler) EndUpdate() error { return f.outer.EndUpdate() }

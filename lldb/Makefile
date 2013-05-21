@@ -15,7 +15,7 @@ todo:
 
 clean:
 	rm -f *~ cov cov.html bad-dump good-dump lldb.test old.txt new.txt \
-		test-acidfiler0-*
+		test-acidfiler0-* _test.db
 
 gocov:
 	gocov test $(COV) | gocov-html > cov.html

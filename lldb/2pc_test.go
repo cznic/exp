@@ -130,7 +130,7 @@ func TestACIDFiler0(t *testing.T) {
 		return
 	}
 
-	a, err := NewFLTAllocator(acidFiler, FLTPowersOf2)
+	a, err := NewAllocator(acidFiler)
 	if err != nil {
 		t.Error(err)
 		return
@@ -199,7 +199,7 @@ func TestACIDFiler0(t *testing.T) {
 	}
 
 	filer := NewSimpleFileFiler(db)
-	a, err = NewFLTAllocator(filer, FLTPowersOf2)
+	a, err = NewAllocator(filer)
 	if err != nil {
 		t.Error(err)
 		return

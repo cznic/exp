@@ -85,6 +85,7 @@
 package lldb
 
 const (
+	fltSz            = 0x70 // size of the FLT
 	maxShort         = 251
 	maxRq            = 65787
 	maxFLTRq         = 4112
@@ -115,8 +116,8 @@ func n2padding(n int) int {
 }
 
 // Handle <-> offset
-func h2off(h int64) int64   { return (h - 1) * 16 }
-func off2h(off int64) int64 { return off/16 + 1 }
+func h2off(h int64) int64   { return (h + 6) * 16 }
+func off2h(off int64) int64 { return off/16 - 6 }
 
 // Get a 7B int64 from b
 func b2h(b []byte) (h int64) {
