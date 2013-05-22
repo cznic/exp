@@ -159,7 +159,7 @@ func testBTreePut1(t *testing.T, nf func() btreeStore, grow, from, to, xor int64
 		h2b(v[:], 0x0200000000+i^xor)
 		kk := append(make([]byte, grow*i), k[:]...)
 		vv := append(make([]byte, grow*i), v[:]...)
-		prev, err := tree.put(a, nil, kk, vv, true)
+		prev, err := tree.put(nil, a, nil, kk, vv, true)
 		if err != nil || len(prev) != 0 {
 			t.Fatal(i, prev, err)
 		}
@@ -188,7 +188,7 @@ func testBTreePut1(t *testing.T, nf func() btreeStore, grow, from, to, xor int64
 		kk := append(make([]byte, grow*i), k[:]...)
 		vv := append(make([]byte, grow*i), v[:]...)
 		expPrev := append(make([]byte, grow*i), prevValue[:]...)
-		gotPrev, err := tree.put(a, nil, kk, vv, true)
+		gotPrev, err := tree.put(nil, a, nil, kk, vv, true)
 		if err != nil {
 			t.Fatal(i, err)
 		}
@@ -289,7 +289,7 @@ func testBTreePut2(t *testing.T, nf func() btreeStore, grow, n int) (tree btree)
 		h2b(v[:], iv)
 		kk := append(make([]byte, grow*i), k[:]...)
 		vv := append(make([]byte, grow*i), v[:]...)
-		prev, err := tree.put(a, nil, kk, vv, true)
+		prev, err := tree.put(nil, a, nil, kk, vv, true)
 		if err != nil || len(prev) != 0 {
 			t.Fatal(i, prev, err)
 		}
@@ -365,7 +365,7 @@ func benchmarkBTreePut(b *testing.B, v []byte) {
 	runtime.GC()
 	b.StartTimer()
 	for _, k := range ka {
-		tree.put(a, bytes.Compare, k[:], v, true)
+		tree.put(nil, a, bytes.Compare, k[:], v, true)
 	}
 }
 
@@ -402,7 +402,7 @@ func benchmarkBTreeGet(b *testing.B, v []byte) {
 	}
 
 	for _, k := range ka {
-		tree.put(a, bytes.Compare, k[:], v, true)
+		tree.put(nil, a, bytes.Compare, k[:], v, true)
 	}
 	runtime.GC()
 	b.StartTimer()

@@ -186,13 +186,13 @@ func fillseq() {
 	}()
 
 	filer := lldb.NewSimpleFileFiler(f)
-	a, err := lldb.NewFLTAllocator(filer, lldb.FLTPowersOf2)
+	a, err := lldb.NewAllocator(filer)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	//a.Compress = true
+	a.Compress = true
 
 	b, _, err := lldb.CreateBTree(a, nil)
 	if err != nil {

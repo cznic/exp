@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cznic/sortutil"
+	"github.com/cznic/zappy"
 )
 
 var (
@@ -739,11 +740,13 @@ func TestAllocatorMakeUsedBlock(t *testing.T) {
 	}
 
 	var c allocatorBlock
-	if _, _, err := a.makeUsedBlock(&c, make([]byte, maxRq)); err != nil {
+	dst := a.buffers.Alloc(zappy.MaxEncodedLen(maxRq + 1))
+	defer a.buffers.Free()
+	if _, _, err := a.makeUsedBlock(dst, &c, make([]byte, maxRq)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := a.makeUsedBlock(&c, make([]byte, maxRq+1)); err == nil {
+	if _, _, err := a.makeUsedBlock(dst, &c, make([]byte, maxRq+1)); err == nil {
 		t.Fatal("unexpected success")
 	}
 }

@@ -13,8 +13,9 @@ todo:
 	@grep -n println *.go || true
 
 clean:
+	@go clean
 	rm -f *~ cov cov.html bad-dump good-dump lldb.test old.txt new.txt \
-		test-acidfiler0-*
+		test-acidfiler0-* db_bench.test
 
 gocov:
 	gocov test $(COV) | gocov-html > cov.html

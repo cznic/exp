@@ -31,7 +31,6 @@ func Test(t *testing.T) {
 }
 
 func TestProf(t *testing.T) {
-	return
 	dbname := os.Args[0] + ".db"
 	f, err := os.OpenFile(dbname, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666)
 	if err != nil {
@@ -43,15 +42,15 @@ func TestProf(t *testing.T) {
 		os.Remove(f.Name())
 	}()
 
-	filer := lldb.NewSimpleFileFiler(f)
-
-	a, err := lldb.NewFLTAllocator(filer, lldb.FLTPowersOf2)
+	filer := lldb.NewSimpleFileFiler(f) // file
+	//filer := lldb.NewMemFiler()         // mem
+	a, err := lldb.NewAllocator(filer)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	//a.Compress = true
+	a.Compress = true
 
 	b, _, err := lldb.CreateBTree(a, nil)
 	if err != nil {
@@ -60,17 +59,16 @@ func TestProf(t *testing.T) {
 	}
 
 	var key [16]byte
-	for i := uint32(0); int(i) < 1e3; i++ {
+	for i := uint32(0); int(i) < 10000; i++ {
 		binary.BigEndian.PutUint32(key[:], i)
-		if err = t.Set(key[:], value100); err != nil {
-			b.Error(err)
+		if err = b.Set(key[:], value100); err != nil {
+			t.Error(err)
 			return
 		}
 	}
 }
 
 func BenchmarkMem(b *testing.B) {
-	println(b.N)
 	f, err := ioutil.TempFile("", "")
 	if err != nil {
 		b.Fatal(err)
@@ -82,7 +80,7 @@ func BenchmarkMem(b *testing.B) {
 	}()
 
 	filer := lldb.NewSimpleFileFiler(f)
-	a, err := lldb.NewFLTAllocator(filer, lldb.FLTPowersOf2)
+	a, err := lldb.NewAllocator(filer)
 	if err != nil {
 		b.Error(err)
 		return

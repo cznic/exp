@@ -132,7 +132,7 @@ import (
 )
 
 const (
-	N = 1e6
+	N = 1e5
 )
 
 var value100 = []byte("Here is a performance report (with explanatioaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
