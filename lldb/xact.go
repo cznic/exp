@@ -197,11 +197,6 @@ func (f *bitFiler) Truncate(size int64) (err error) {
 }
 
 func (f *bitFiler) WriteAt(b []byte, off int64) (n int, err error) {
-	return f.writeAt(b, off, true)
-}
-
-//TODO union w/ above
-func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
 	off0 := off
 	pgI := off >> bfBits
 	pgO := int(off & bfMask)
@@ -224,11 +219,9 @@ func (f *bitFiler) writeAt(b []byte, off int64, dirty bool) (n int, err error) {
 		}
 		nc = copy(pg.data[pgO:], b)
 		pgI++
-		if dirty {
-			pg.dirty = true
-			for i := pgO; i < pgO+nc; i++ {
-				pg.flags[i>>3] |= bitmask[i&7]
-			}
+		pg.dirty = true
+		for i := pgO; i < pgO+nc; i++ {
+			pg.flags[i>>3] |= bitmask[i&7]
 		}
 		pgO = 0
 		rem -= nc
@@ -308,7 +301,7 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 //
 // While using RollbackFiler, every intended update of the wrapped Filler, by
 // WriteAt, Truncate or PunchHole, _must_ be made within a transaction.
-// Attempts to do it outside of a transaction will return lldb.ErrPERM. OTOH,
+// Attempts to do it outside of a transaction will return ErrPERM. OTOH,
 // invoking ReadAt outside of a transaction is not a problem.
 //
 // No nested transactions: All updates within a transaction are held in memory.
@@ -334,12 +327,12 @@ func (f *bitFiler) dumpDirty(w io.WriterAt) (nwr int, err error) {
 // wrapped disk based SimpleFileFiler it protects against at least some HW
 // errors - if Rollback is properly invoked on such failures and/or if there's
 // some WAL or 2PC or whatever other safe mechanism based recovery procedure
-// used by the lldb client.
+// used by the client.
 //
 // The "real" writes to the wrapped Filer (or WAL instead) go through the
 // writerAt supplied to NewRollbackFiler.
 //
-// List of functions/methods which are a good candidate to wrap in a
+// List of functions/methods which are recommended to be wrapped in a
 // BeginUpdate/EndUpdate structural transaction:
 //
 // 	Allocator.Alloc

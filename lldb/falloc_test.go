@@ -1675,70 +1675,70 @@ func TestFltFind(t *testing.T) {
 	var f flt
 
 	f.init()
-	if h, _ := f.find(1); h != 0 {
+	if h := f.find(1); h != 0 {
 		t.Fatal(h)
 	}
 
 	// [0]
 	f.init()
 	f[0].head = 1
-	if h, _ := f.find(1); h != 1 || f[0].head != 0 {
+	if h := f.find(1); h != 1 || f[0].head != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[0].head = 1
-	if h, _ := f.find(2); h != 0 || f[0].head == 0 {
+	if h := f.find(2); h != 0 || f[0].head == 0 {
 		t.Fatal(h)
 	}
 
 	// [1]
 	f.init()
 	f[1].head = 1
-	if h, _ := f.find(1); h != 1 || f[1].head != 0 {
+	if h := f.find(1); h != 1 || f[1].head != 0 {
 		t.Fatal("\n", f, h)
 	}
 
 	f.init()
 	f[1].head = 1
-	if h, _ := f.find(2); h != 1 || f[1].head != 0 {
+	if h := f.find(2); h != 1 || f[1].head != 0 {
 		t.Fatalf("\n%s\n%d", f, h)
 	}
 
 	f.init()
 	f[1].head = 1
-	if h, _ := f.find(3); h != 0 || f[1].head == 0 {
+	if h := f.find(3); h != 0 || f[1].head == 0 {
 		t.Fatal(h)
 	}
 
 	// [2]
 	f.init()
 	f[2].head = 1
-	if h, _ := f.find(1); h != 1 || f[2].head != 0 {
+	if h := f.find(1); h != 1 || f[2].head != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.find(2); h != 1 || f[2].head != 0 {
+	if h := f.find(2); h != 1 || f[2].head != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.find(3); h != 1 || f[2].head != 0 {
+	if h := f.find(3); h != 1 || f[2].head != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.find(4); h != 1 || f[2].head != 0 {
+	if h := f.find(4); h != 1 || f[2].head != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.find(5); h != 0 || f[2].head == 0 {
+	if h := f.find(5); h != 0 || f[2].head == 0 {
 		t.Fatal(h)
 	}
 }
@@ -1746,94 +1746,94 @@ func TestFltFind(t *testing.T) {
 func TestFltHead(t *testing.T) {
 	var f flt
 	f.init()
-	if h, _ := f.head(1); h != 0 {
+	if h := f.head(1); h != 0 {
 		t.Fatal(h)
 	}
 
 	// [0]
 	f.init()
 	f[0].head = 1
-	if h, _ := f.head(1); h != 1 {
+	if h := f.head(1); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[0].head = 1
-	if h, _ := f.head(2); h != 0 {
+	if h := f.head(2); h != 0 {
 		t.Fatal(h)
 	}
 
 	// [1]
 	f.init()
 	f[1].head = 1
-	if h, _ := f.head(1); h != 0 {
+	if h := f.head(1); h != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[1].head = 1
-	if h, _ := f.head(2); h != 1 {
+	if h := f.head(2); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[1].head = 1
-	if h, _ := f.head(3); h != 1 {
+	if h := f.head(3); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[1].head = 1
-	if h, _ := f.head(4); h != 0 {
+	if h := f.head(4); h != 0 {
 		t.Fatal(h)
 	}
 
 	// [2]
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(1); h != 0 {
+	if h := f.head(1); h != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(2); h != 0 {
+	if h := f.head(2); h != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(3); h != 0 {
+	if h := f.head(3); h != 0 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(4); h != 1 {
+	if h := f.head(4); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(5); h != 1 {
+	if h := f.head(5); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(6); h != 1 {
+	if h := f.head(6); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(7); h != 1 {
+	if h := f.head(7); h != 1 {
 		t.Fatal(h)
 	}
 
 	f.init()
 	f[2].head = 1
-	if h, _ := f.head(8); h != 0 {
+	if h := f.head(8); h != 0 {
 		t.Fatal(h)
 	}
 

@@ -97,7 +97,7 @@ Block handles
 A handle is an integer referring to a block. The reference is the number of the
 atom the block starts with. Put in other way:
 
- handle == offset/16 -6
+ handle == offset/16 - 6
  offset == 16 * (handle + 6)
 
 `offset` is the offset of the first byte of the block, measured in bytes
@@ -321,11 +321,7 @@ func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 
 func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 	rqAtoms := n2atoms(len(b))
-	if h, err = a.flt.find(rqAtoms); err != nil {
-		return
-	}
-
-	if h == 0 { // must grow
+	if h = a.flt.find(rqAtoms); h == 0 { // must grow
 		var sz int64
 		if sz, err = a.f.Size(); err != nil {
 			return
@@ -492,12 +488,7 @@ func (a *Allocator) free2(h, atoms int64) (err error) {
 
 // Add a free block h to the appropriate free list
 func (a *Allocator) link(h, atoms int64) (err error) {
-	next, err := a.flt.head(atoms)
-	if err != nil {
-		return
-	}
-
-	if err = a.makeFree(h, atoms, 0, next); err != nil {
+	if err = a.makeFree(h, atoms, 0, a.flt.head(atoms)); err != nil {
 		return
 	}
 
@@ -1553,7 +1544,7 @@ func (f *flt) load(fi Filer, off int64) (err error) {
 	return
 }
 
-func (f *flt) find(rq int) (h int64, _ error) { //TODO -error
+func (f *flt) find(rq int) (h int64) {
 	switch {
 	case rq < 1:
 		panic(rq)
@@ -1575,18 +1566,18 @@ func (f *flt) find(rq int) (h int64, _ error) { //TODO -error
 	}
 }
 
-func (f *flt) head(atoms int64) (h int64, _ error) { //TODO -error
+func (f *flt) head(atoms int64) (h int64) {
 	switch {
 	case atoms < 1:
 		panic(atoms)
 	case atoms >= maxFLTRq:
-		return f[13].head, nil
+		return f[13].head
 	default:
 		lg := mathutil.Log2Uint16(uint16(atoms))
 		g := f[lg:]
 		for i := range g {
 			if atoms < g[i+1].minSize {
-				return g[i].head, nil
+				return g[i].head
 			}
 		}
 		panic("internal error")
@@ -1599,7 +1590,7 @@ func (f *flt) setHead(h, atoms int64, fi Filer) (err error) {
 		panic(atoms)
 	case atoms >= maxFLTRq:
 		var b [7]byte //TODO buffers
-		if _, err = fi.WriteAt(h2b(b[:], h), 13*8+1); err != nil {
+		if _, err = fi.WriteAt(h2b(b[:], h), 8*13+1); err != nil {
 			return
 		}
 
