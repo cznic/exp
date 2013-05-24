@@ -136,7 +136,7 @@ import (
 )
 
 const (
-	N = 1e5
+	N = 1e6
 )
 
 var (

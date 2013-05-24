@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	nBufs  = 9          // bufs.New(nBufs)
-	maxBuf = maxRq + 20 // bufs,Buffers.Alloc
+	nBufs   = 9          // bufs.New(nBufs)
+	maxBuf  = maxRq + 20 // bufs,Buffers.Alloc
+	cacheSz = 1          //TODO more       //TODO configurable
 )
 
 // AllocStats record statistics about a Filer. It can be optionally filled by
@@ -259,7 +260,16 @@ the subtitle 'Content wiping' above. S, P and N are stored in network byte
 order. Large free blocks may trigger a consideration of file hole punching of
 the Leak field - for some value of 'large'.
 
+Note: Allocator methods vs CRUD[1]:
+
+	Alloc	[C]reate
+	Get	[R]ead
+	Realloc	[U]pdate
+	Free	[D]elete
+
 Note: No Allocator method returns io.EOF.
+
+  [1]: http://en.wikipedia.org/wiki/Create,_read,_update_and_delete
 
 */
 type Allocator struct {
@@ -272,21 +282,23 @@ type Allocator struct {
 // NewAllocator returns a new Allocator. To open an existing file, pass its
 // Filer. To create a "new" file, pass a Filer which file is of zero size.
 func NewAllocator(f Filer) (a *Allocator, err error) {
-	a = &Allocator{f: f, buffers: bufs.New(nBufs)}
+	a = &Allocator{
+		f:       f,
+		buffers: bufs.New(nBufs),
+	}
 
-	// only experiment measurement
-	//for i := 0; i < nBufs; i++ {
-	//	a.balloc(maxBuf)
-	//}
-	//for i := 0; i < nBufs; i++ {
-	//	a.bfree()
-	//}
-
+	a.cinit()
 	switch x := f.(type) {
 	case *RollbackFiler:
-		x.afterRollback = func() error { return a.flt.load(a.f, 0) }
+		x.afterRollback = func() error {
+			a.cinit()
+			return a.flt.load(a.f, 0)
+		}
 	case *ACIDFiler0:
-		x.RollbackFiler.afterRollback = func() error { return a.flt.load(a.f, 0) }
+		x.RollbackFiler.afterRollback = func() error {
+			a.cinit()
+			return a.flt.load(a.f, 0)
+		}
 	}
 
 	sz, err := f.Size()
@@ -320,6 +332,18 @@ func (a *Allocator) bfree() {
 	a.buffers.Free()
 }
 
+func (a *Allocator) cinit() {
+	return //TODO
+}
+
+func (a *Allocator) cadd(b []byte, h int64) {
+	return //TODO
+}
+
+func (a *Allocator) cfree(h int64) {
+	return //TODO
+}
+
 // Alloc allocates storage space for b and returns the handle of the new block
 // with content set to b or an error, if any. The returned handle is valid only
 // while the block is used - until the block is deallocated. No two valid
@@ -345,6 +369,10 @@ func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 }
 
 func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
+	defer func() {
+		a.cadd(b, h)
+	}()
+
 	rqAtoms := n2atoms(len(b))
 	if h = a.flt.find(rqAtoms); h == 0 { // must grow
 		var sz int64
@@ -408,7 +436,6 @@ func (a *Allocator) Free(handle int64) (err error) {
 }
 
 func (a *Allocator) free(h, from int64, acceptRelocs bool) (err error) {
-	//fmt.Printf("free(h %#x from %#x acceptRelocs %t)\n", h, from, acceptRelocs)
 	tag, atoms, _, n, err := a.nfo(h)
 	if err != nil {
 		return
@@ -435,7 +462,7 @@ func (a *Allocator) free(h, from int64, acceptRelocs bool) (err error) {
 }
 
 func (a *Allocator) free2(h, atoms int64) (err error) {
-	//fmt.Printf("free2(h %#x off %#x atoms %#x)\n", h, h2off(h), atoms)
+	a.cfree(h)
 	sz, err := a.f.Size()
 	if err != nil {
 		return
@@ -568,6 +595,18 @@ func need(n int, src []byte) []byte {
 // otherwise invalid data may be returned without detecting the error.
 func (a *Allocator) Get(dst []byte, handle int64) (b []byte, err error) {
 	dst = dst[:cap(dst)]
+	/*TODO
+	if le, ok := a.cache[handle]; ok {
+		a.lru.MoveToFront(le)
+		ce := le.Value.(cElem)
+		b := need(len(ce.b), dst)
+		copy(b, ce.b)
+		return b, nil
+	}
+	*/
+
+	//TODO defer a.cadd(b, handle)
+
 	first := a.balloc(16)
 	defer a.bfree()
 	relocated := false

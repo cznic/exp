@@ -216,7 +216,7 @@ func TestACIDFiler0(t *testing.T) {
 		binary.BigEndian.PutUint64(val[:], uint64(v))
 		b, err := tr.Get(key[:])
 		if err != nil || b == nil || !bytes.Equal(b, val[:]) {
-			t.Error(err, b)
+			t.Error(err, b, val[:])
 			return
 		}
 	}
