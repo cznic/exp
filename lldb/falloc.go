@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	nBufs  = 7          // bufs.New(nBufs)
+	nBufs  = 9          // bufs.New(nBufs)
 	maxBuf = maxRq + 20 // bufs,Buffers.Alloc
 )
 
@@ -47,15 +47,15 @@ alternative implementations aiming for compatibility with this one.
 Filer file
 
 A Filer file, or simply 'file', is a linear, contiguous sequence of blocks.
-Blocks may be either bfree (currently unused) or allocated (currently used).
+Blocks may be either free (currently unused) or allocated (currently used).
 Some blocks may eventually become virtual in a sense as they may not be
 realized in the storage (sparse files).
 
 Free Lists Table
 
-File starts with a FLT. This table records heads of 14 doubly linked bfree
-lists. The zero based index (I) vs minimal size of bfree blocks in that list,
-except the last one which registers bfree blocks of size 4112+ atoms:
+File starts with a FLT. This table records heads of 14 doubly linked free
+lists. The zero based index (I) vs minimal size of free blocks in that list,
+except the last one which registers free blocks of size 4112+ atoms:
 
 	MinSize == 2^I
 
@@ -63,10 +63,10 @@ except the last one which registers bfree blocks of size 4112+ atoms:
 
 Each entry in the FLT is 8 bytes in netwtork order, MSB MUST be zero, ie. the
 slot value is effectively only 7 bytes. The value is the handle of the head of
-the respective doubly linked bfree list. The FLT size is 14*8 == 112(0x70)
-bytes. If the bfree blocks list for any particular size is empty, the respective
-FLT slot is zero. Sizes of bfree blocks in one list MUST NOT overlap with sizes
-of bfree lists in other list. For example, even though a bfree block of size 2
+the respective doubly linked free list. The FLT size is 14*8 == 112(0x70)
+bytes. If the free blocks list for any particular size is empty, the respective
+FLT slot is zero. Sizes of free blocks in one list MUST NOT overlap with sizes
+of free lists in other list. For example, even though a free block of size 2
 technically is of minimal size >= 1, it MUST NOT be put to the list for slot 0
 (minimal size 1), but in slot 1( minimal size 2).
 
@@ -78,13 +78,13 @@ technically is of minimal size >= 1, it MUST NOT be put to the list for slot 0
 	slot 12:	sizes [4096, 4112)
 	slot 13:	sizes [4112, inf)
 
-The last FLT slot collects all bfree blocks bigger than its minimal size. That
+The last FLT slot collects all free blocks bigger than its minimal size. That
 still respects the 'no overlap' invariant.
 
 File blocks
 
 A block is a linear, contiguous sequence of atoms. The first and last atoms of
-a block provide information about, for example, whether the block is bfree or
+a block provide information about, for example, whether the block is free or
 used, what is the size of the block, etc.  Details are discussed elsewhere. The
 first block of a file starts immediately after FLT, ie. at file offset
 112(0x70).
@@ -138,8 +138,8 @@ Block types are:
  1. Short content used block (head tags 0x00-0xFB)
  2. Long content used block (head tag 0xFC)
  3. Relocated used block (head tag 0xFD)
- 4. Short, single atom, bfree block (head tag 0xFE)
- 5. Long bfree block (head tag 0xFF)
+ 4. Short, single atom, free block (head tag 0xFE)
+ 5. Long free block (head tag 0xFF)
 
 Note: Relocated used block, 3. above (head tag 0xFD) MUST NOT refer to blocks
 other then 1. or 2. above (head tags 0x00-0xFC).
@@ -220,14 +220,14 @@ Free blocks
 Free blocks are the result of space deallocation. Free blocks are organized in
 one or more doubly linked lists, abstracted by the FLT interface. Free blocks
 MUST be "registered" by putting them in such list. Allocator MUST reuse a big
-enough bfree block, if such exists, before growing the file size. When a bfree
+enough free block, if such exists, before growing the file size. When a free
 block is created by deallocation or reallocation it MUST be joined with any
-adjacently existing bfree blocks before "registering". If the resulting bfree
-block is now a last block of a file, the bfree block MUST be discarded and the
+adjacently existing free blocks before "registering". If the resulting free
+block is now a last block of a file, the free block MUST be discarded and the
 file size MUST be truncated accordingly instead. Put differently, there MUST
-NOT ever be a bfree block at the file end.
+NOT ever be a free block at the file end.
 
-A single bfree atom
+A single free atom
 
 Is an unused block of size 1 atom.
 
@@ -237,8 +237,8 @@ Is an unused block of size 1 atom.
 	| 0xFE ||  P   |   N    || 0xFE |
 	+------++------+--------++------+
 
-P and N, stored in network byte order, are the previous and next bfree block
-handles in the doubly linked list to which this bfree block belongs.
+P and N, stored in network byte order, are the previous and next free block
+handles in the doubly linked list to which this free block belongs.
 
 A long unused block
 
@@ -253,10 +253,10 @@ Is an unused block of size > 1 atom.
 	Z == 16 * S - 1
 
 S is the size of this unused block in atoms. P and N are the previous and next
-bfree block handles in the doubly linked list to which this bfree block belongs.
+free block handles in the doubly linked list to which this free block belongs.
 Leak contains any data the block had before deallocating this block.  See also
 the subtitle 'Content wiping' above. S, P and N are stored in network byte
-order. Large bfree blocks may trigger a consideration of file hole punching of
+order. Large free blocks may trigger a consideration of file hole punching of
 the Leak field - for some value of 'large'.
 
 Note: No Allocator method returns io.EOF.
@@ -273,6 +273,15 @@ type Allocator struct {
 // Filer. To create a "new" file, pass a Filer which file is of zero size.
 func NewAllocator(f Filer) (a *Allocator, err error) {
 	a = &Allocator{f: f, buffers: bufs.New(nBufs)}
+
+	// only experiment measurement
+	//for i := 0; i < nBufs; i++ {
+	//	a.balloc(maxBuf)
+	//}
+	//for i := 0; i < nBufs; i++ {
+	//	a.bfree()
+	//}
+
 	switch x := f.(type) {
 	case *RollbackFiler:
 		x.afterRollback = func() error { return a.flt.load(a.f, 0) }
@@ -348,7 +357,7 @@ func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 		return
 	}
 
-	// Handle is the first item of a bfree blocks list.
+	// Handle is the first item of a free blocks list.
 	tag, s, prev, next, err := a.nfo(h)
 	if err != nil {
 		return
@@ -399,7 +408,7 @@ func (a *Allocator) Free(handle int64) (err error) {
 }
 
 func (a *Allocator) free(h, from int64, acceptRelocs bool) (err error) {
-	//fmt.Printf("bfree(h %#x from %#x acceptRelocs %t)\n", h, from, acceptRelocs)
+	//fmt.Printf("free(h %#x from %#x acceptRelocs %t)\n", h, from, acceptRelocs)
 	tag, atoms, _, n, err := a.nfo(h)
 	if err != nil {
 		return
@@ -419,7 +428,7 @@ func (a *Allocator) free(h, from int64, acceptRelocs bool) (err error) {
 			return
 		}
 	case tagFreeShort, tagFreeLong:
-		return &ErrINVAL{"Allocator.Free: attempt to bfree a bfree block at off", h2off(h)}
+		return &ErrINVAL{"Allocator.Free: attempt to free a free block at off", h2off(h)}
 	}
 
 	return a.free2(h, atoms)
@@ -502,7 +511,7 @@ func (a *Allocator) free2(h, atoms int64) (err error) {
 	return a.link(h-latoms, latoms+atoms+ratoms)
 }
 
-// Add a bfree block h to the appropriate bfree list
+// Add a free block h to the appropriate free list
 func (a *Allocator) link(h, atoms int64) (err error) {
 	if err = a.makeFree(h, atoms, 0, a.flt.head(atoms)); err != nil {
 		return
@@ -511,7 +520,7 @@ func (a *Allocator) link(h, atoms int64) (err error) {
 	return a.flt.setHead(h, atoms, a.f)
 }
 
-// Remove bfree block h from the bfree list
+// Remove free block h from the free list
 func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 	switch {
 	case p == 0 && n == 0:
@@ -760,7 +769,7 @@ retry:
 			}
 
 			if rtag == tagFreeShort || rtag == tagFreeLong {
-				// Right neighbour is a bfree block
+				// Right neighbour is a free block
 				if needAtoms <= atoms+ratoms {
 					// can expand in place
 					if err = a.unlink(rh, ratoms, p, n); err != nil {
@@ -827,7 +836,7 @@ func (a *Allocator) read(b []byte, off int64) (err error) {
 	return nil
 }
 
-// nfo returns h's tag. If it's a bfree block then return also (s)ize (in
+// nfo returns h's tag. If it's a free block then return also (s)ize (in
 // atoms), (p)rev and (n)ext. If it's a used block then only (s)ize is returned
 // (again in atoms). If it's a used relocate block then (n)ext is set to the
 // relocation target handle.
@@ -873,7 +882,7 @@ func (a *Allocator) nfo(h int64) (tag byte, s, p, n int64, err error) {
 }
 
 // leftNfo returns nfo for h's left neighbour if h > 1 and the left neighbour
-// is a bfree block. Otherwise all zero values are returned instead.
+// is a free block. Otherwise all zero values are returned instead.
 func (a *Allocator) leftNfo(h int64) (tag byte, s, p, n int64, err error) {
 	if !(h > 1) {
 		return
@@ -932,7 +941,7 @@ func (a *Allocator) next(h, n int64) (err error) {
 	return a.writeAt(h2b(b[:7], n), off)
 }
 
-// Make the filer image @h a bfree block.
+// Make the filer image @h a free block.
 func (a *Allocator) makeFree(h, atoms, prev, next int64) (err error) {
 	var buf [22]byte
 	switch {
@@ -1224,12 +1233,12 @@ var nolog = func(error) bool { return false }
 //
 // The verifying process will scan the whole DB at least 3 times (a trade
 // between processing space and time consumed). It doesn't read the content of
-// bfree blocks above the head/tail info bytes. If the 3rd phase detects lost
-// bfree space, then a 4th scan (a faster one) is performed to precisely report
+// free blocks above the head/tail info bytes. If the 3rd phase detects lost
+// free space, then a 4th scan (a faster one) is performed to precisely report
 // all of them.
 //
 // If the DB/Filer to be verified is reasonably small, respective if its
-// size/128 can comfortably fit within process's bfree memory, then it is
+// size/128 can comfortably fit within process's free memory, then it is
 // recommended to consider using a MemFiler for the bit map.
 //
 // Statistics are returned via 'stats' if non nil. The statistics are valid
@@ -1437,10 +1446,10 @@ func (a *Allocator) Verify(bitmap Filer, log func(error) bool, stats *AllocStats
 
 	}
 
-	// Phase 3 - using the flt check heads link to proper bfree blocks.  For
-	// every bfree block, walk the list, verify the {next, prev} links and
-	// turn the respective map bit off. After processing all bfree lists,
-	// the map bits count should be zero. Otherwise there are "lost" bfree
+	// Phase 3 - using the flt check heads link to proper free blocks.  For
+	// every free block, walk the list, verify the {next, prev} links and
+	// turn the respective map bit off. After processing all free lists,
+	// the map bits count should be zero. Otherwise there are "lost" free
 	// blocks.
 
 	var prev, next, fprev, fnext int64

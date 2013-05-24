@@ -104,6 +104,7 @@ func (a *Array) bset(val, key []byte) (err error) {
 
 func (a *Array) binc(delta int64, key []byte) (r int64, err error) {
 	_, _, err = a.tree.Put(
+		nil, //TODO buffers
 		append(a.prefix, key...),
 		func(key []byte, old []byte) (new []byte, write bool, err error) {
 			write = true

@@ -1520,6 +1520,7 @@ func TestBTreeEnumeratorInvalidating(t *testing.T) {
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Get([]byte{1}); return err }) //TODO will not work after RO Get materializes
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error {
 		_, _, err := b.Put(
+			nil,
 			[]byte{1},
 			func(k, o []byte) ([]byte, bool, error) { return nil, false, nil },
 		)
