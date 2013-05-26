@@ -66,6 +66,15 @@ func TestProf(t *testing.T) {
 			return
 		}
 	}
+	bufsU, bufsT, bytesU, bytesT, h, m := a.CacheStats()
+	const p = 100.0
+	t.Logf(
+		"cache: buffers %d/%d(%.1f%%), bytes %d/%d(%.1f%%), hits %d(%.1f%%), misses %d(%.1f%%)",
+		bufsU, bufsT, p*float64(bufsU)/float64(bufsT),
+		bytesU, bytesT, p*float64(bytesU)/float64(bytesT),
+		h, p*float64(h)/float64(h+m),
+		m, p*float64(m)/float64(h+m),
+	)
 }
 
 func BenchmarkMem(b *testing.B) {

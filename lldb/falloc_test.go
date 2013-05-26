@@ -911,7 +911,7 @@ func TestAllocatorRnd(t *testing.T) {
 				if err := a.Realloc(h, wb); err != nil || bad() {
 					dump(a, t)
 					t.Fatalf(
-						"D) h:%#x, len(b):%#4x, len(wb): %#x, err %s",
+						"D) h:%#x, len(b):%#4x, len(wb): %#x, err %v",
 						h, len0, len(wb), err,
 					)
 				}
@@ -1484,12 +1484,12 @@ func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
 
 	v := make([]byte, sz)
 	ref := map[int64]struct{}{}
-	for i := 0; i < b.N; i++ {
-		if err = f.BeginUpdate(); err != nil {
-			b.Error(err)
-			return
-		}
+	if err = f.BeginUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
 
+	for i := 0; i < b.N; i++ {
 		h, err := a.Alloc(v)
 		if h <= 0 || err != nil {
 			f.EndUpdate()
@@ -1499,11 +1499,12 @@ func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
 
 		ref[h] = struct{}{}
 
-		if err = f.EndUpdate(); err != nil {
-			b.Error(err)
-			return
-		}
 	}
+	if err = f.EndUpdate(); err != nil {
+		b.Error(err)
+		return
+	}
+
 	runtime.GC()
 	b.ResetTimer()
 	for h := range ref {
