@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 	"sync"
@@ -50,6 +51,7 @@ const (
 	stIdleArmed
 	stCollectingArmed
 	stCollectingTriggered
+	stEndUpdateFailed
 )
 
 func init() {
@@ -59,27 +61,28 @@ func init() {
 }
 
 type DB struct {
-	_root       *Array          // Root directory, do not access directly
-	acache      treeCache       // Arrays cache
-	acidNest    int             // Grace period nesting level
-	acidState   int             // Grace period FSM state.
-	acidTimer   *time.Timer     // Grace period timer
-	alloc       *lldb.Allocator // The machinery. Wraps filer
-	bkl         sync.Mutex      // Big Kernel Lock
-	closeMu     sync.Mutex      // Close() coordination
-	closed      bool            // it was
-	emptySize   int64           // Any header size including FLT.
-	f           *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
-	fcache      treeCache       // Files cache
-	filer       lldb.Filer      // Wraps f
-	gracePeriod time.Duration   // WAL grace period
-	lock        *os.File        // The DB file lock
-	removing    map[int64]bool  // BTrees being removed
-	removingMu  sync.Mutex      // Remove() coordination
-	scache      treeCache       // System arrays cache
-	stop        chan int        // Remove() coordination
-	wg          sync.WaitGroup  // Remove() coordination
-	xact        bool            // Updates are made within automatic structural transactions
+	_root         *Array          // Root directory, do not access directly
+	acache        treeCache       // Arrays cache
+	acidNest      int             // Grace period nesting level
+	acidState     int             // Grace period FSM state.
+	acidTimer     *time.Timer     // Grace period timer
+	alloc         *lldb.Allocator // The machinery. Wraps filer
+	bkl           sync.Mutex      // Big Kernel Lock
+	closeMu       sync.Mutex      // Close() coordination
+	closed        bool            // it was
+	emptySize     int64           // Any header size including FLT.
+	f             *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
+	fcache        treeCache       // Files cache
+	filer         lldb.Filer      // Wraps f
+	gracePeriod   time.Duration   // WAL grace period
+	lastCommitErr error
+	lock          *os.File       // The DB file lock
+	removing      map[int64]bool // BTrees being removed
+	removingMu    sync.Mutex     // Remove() coordination
+	scache        treeCache      // System arrays cache
+	stop          chan int       // Remove() coordination
+	wg            sync.WaitGroup // Remove() coordination
+	xact          bool           // Updates are made within automatic structural transactions
 }
 
 // Create creates the named DB file mode 0666 (before umask). The file must not
@@ -136,7 +139,7 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 		}
 	}()
 
-	if db.alloc, err = lldb.NewAllocator(lldb.NewInnerFiler(filer, 16)); err != nil {
+	if db.alloc, err = lldb.NewAllocator(lldb.NewInnerFiler(filer, 16), &lldb.Options{}); err != nil {
 		return nil, &os.PathError{Op: "dbm.Create", Path: filer.Name(), Err: err}
 	}
 
@@ -233,9 +236,7 @@ func Open(name string, opts *Options) (db *DB, err error) {
 
 // Close closes the DB, rendering it unusable for I/O. It returns an error, if
 // any. Failing to call Close before exiting a program can render the DB
-// unusable.  A dbm client should install signal handlers and ensure Close is
-// called on receiving of, for example, the SIGINT signal.(TODO make it
-// automatic)
+// unusable.
 //
 // Close is idempotent.
 func (db *DB) Close() (err error) {
@@ -709,6 +710,13 @@ func (db *DB) boot() (err error) {
 		go db.victor(removes, h)
 	}
 
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
+	go func() {
+		<-c
+		db.Close()
+	}()
+
 	return
 }
 
@@ -853,6 +861,8 @@ func (db *DB) enter() (err error) {
 		db.acidNest++
 	case stCollectingTriggered:
 		db.acidNest++
+	case stEndUpdateFailed:
+		return db.leave(&err)
 	}
 
 	if db.xact {
@@ -889,6 +899,9 @@ func (db *DB) leave(err *error) error {
 			}
 			db.acidState = stIdle
 		}
+	case stEndUpdateFailed:
+		db.bkl.Unlock()
+		return fmt.Errorf("Last transaction commit failed: %v", db.lastCommitErr)
 	}
 
 	if db.xact {
@@ -919,8 +932,12 @@ func (db *DB) timeout() {
 	case stCollecting:
 		db.acidState = stCollectingTriggered
 	case stIdleArmed:
-		db.filer.EndUpdate() //TODO+ async error reporting (poll in leave()?)
-		//TODO? Rollback after EndUpdate fails?
+		if err := db.filer.EndUpdate(); err != nil { // If EndUpdate fails, no WAL was written (automatic Rollback)
+			db.acidState = stEndUpdateFailed
+			db.lastCommitErr = err
+			return
+		}
+
 		db.acidState = stIdle
 	case stCollectingArmed:
 		db.acidState = stCollectingTriggered

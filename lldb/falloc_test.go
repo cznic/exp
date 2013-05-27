@@ -50,7 +50,7 @@ type pAllocator struct {
 }
 
 func newPAllocator(f Filer) (*pAllocator, error) {
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +734,7 @@ func TestAllocatorAlloc0(t *testing.T) {
 
 func TestAllocatorMakeUsedBlock(t *testing.T) {
 	f := NewMemFiler()
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -986,7 +986,7 @@ func TestRollbackAllocator(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a, err := NewAllocator(r)
+	a, err := NewAllocator(r, &Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1069,7 +1069,7 @@ func benchmarkAllocatorAlloc(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		b.Error(err)
 		return
@@ -1258,7 +1258,7 @@ func benchmarkAllocatorRndFree(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		b.Error(err)
 		return
@@ -1471,7 +1471,7 @@ func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		b.Error(err)
 		return

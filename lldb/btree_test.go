@@ -889,7 +889,7 @@ func TestBTreeRemove(t *testing.T) {
 
 	for n := int64(0); n <= N; n = n*3/2 + 1 {
 		f := NewMemFiler()
-		store, err := NewAllocator(f)
+		store, err := NewAllocator(f, &Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1262,7 +1262,7 @@ func benchmarkBTreeSetFiler(b *testing.B, f Filer, sz int) {
 		return
 	}
 
-	a, err := NewAllocator(f)
+	a, err := NewAllocator(f, &Options{})
 	if err != nil {
 		b.Error(err)
 		return

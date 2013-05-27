@@ -6,10 +6,9 @@
 
 package lldb
 
-//TODO Options, empty now, but for the future.
-
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -23,6 +22,15 @@ import (
 const (
 	maxBuf = maxRq + 20 // bufs,Buffers.Alloc
 )
+
+// Options are passed to the NewAllocator to amend some configuration.  The
+// compatibility promise is the same as of struct types in the Go standard
+// library - introducing changes can be made only by adding new exported
+// fields, which is backward compatible as long as client code uses field names
+// to assign values of imported struct types literals.
+//
+// NOTE: No options are currently defined.
+type Options struct{}
 
 // AllocStats record statistics about a Filer. It can be optionally filled by
 // Allocator.Verify, if successful.
@@ -290,7 +298,11 @@ type Allocator struct {
 
 // NewAllocator returns a new Allocator. To open an existing file, pass its
 // Filer. To create a "new" file, pass a Filer which file is of zero size.
-func NewAllocator(f Filer) (a *Allocator, err error) {
+func NewAllocator(f Filer, opts *Options) (a *Allocator, err error) {
+	if opts == nil { // Enforce *Options is always passed
+		return nil, errors.New("NewAllocator: nil opts passed")
+	}
+
 	a = &Allocator{
 		f:       f,
 		cacheSz: 10,
