@@ -404,10 +404,11 @@ func benchmarkBTreeGet(b *testing.B, v []byte) {
 	for _, k := range ka {
 		tree.put(nil, a, bytes.Compare, k[:], v, true)
 	}
+	buf := make([]byte, len(v))
 	runtime.GC()
 	b.StartTimer()
 	for _, k := range ka {
-		tree.get(a, nil, bytes.Compare, k[:])
+		tree.get(a, buf, bytes.Compare, k[:])
 	}
 }
 
@@ -997,15 +998,15 @@ func TestExtract(t *testing.T) { // Test of the exported wrapper only, .extract 
 	bt.Set([]byte("c"), []byte("d"))
 	bt.Set([]byte("e"), []byte("f"))
 
-	if v, err := bt.Get([]byte("a")); string(v) != "b" || err != nil {
+	if v, err := bt.Get(nil, []byte("a")); string(v) != "b" || err != nil {
 		t.Fatal(v, err)
 	}
 
-	if v, err := bt.Get([]byte("c")); string(v) != "d" || err != nil {
+	if v, err := bt.Get(nil, []byte("c")); string(v) != "d" || err != nil {
 		t.Fatal(v, err)
 	}
 
-	if v, err := bt.Get([]byte("e")); string(v) != "f" || err != nil {
+	if v, err := bt.Get(nil, []byte("e")); string(v) != "f" || err != nil {
 		t.Fatal(v, err)
 	}
 
@@ -1013,15 +1014,15 @@ func TestExtract(t *testing.T) { // Test of the exported wrapper only, .extract 
 		t.Fatal(v, err)
 	}
 
-	if v, err := bt.Get([]byte("a")); string(v) != "b" || err != nil {
+	if v, err := bt.Get(nil, []byte("a")); string(v) != "b" || err != nil {
 		t.Fatal(v, err)
 	}
 
-	if v, err := bt.Get([]byte("c")); v != nil || err != nil {
+	if v, err := bt.Get(nil, []byte("c")); v != nil || err != nil {
 		t.Fatal(v, err)
 	}
 
-	if v, err := bt.Get([]byte("e")); string(v) != "f" || err != nil {
+	if v, err := bt.Get(nil, []byte("e")); string(v) != "f" || err != nil {
 		t.Fatal(v, err)
 	}
 }
@@ -1517,7 +1518,7 @@ func TestBTreeEnumeratorInvalidating(t *testing.T) {
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Delete([]byte{1}) })
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.DeleteAny(); return err })
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Extract([]byte{1}); return err })
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Get([]byte{1}); return err }) //TODO will not work after RO Get materializes
+	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Get(nil, []byte{1}); return err }) //TODO will not work after RO Get materializes
 	testBTreeEnumeratorInvalidating(t, func(b *BTree) error {
 		_, _, err := b.Put(
 			nil,

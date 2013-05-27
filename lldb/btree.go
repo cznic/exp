@@ -198,6 +198,8 @@ func (t *BTree) Dump(w io.Writer) (err error) {
 // Extract is a combination of Get and Delete. If the key exists in the tree,
 // it is returned (like Get) and also deleted from a tree in a more efficient
 // way which doesn't walk it twice.
+//
+//TODO pass dst
 func (t *BTree) Extract(key []byte) (value []byte, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
@@ -230,15 +232,25 @@ func (t *BTree) First() (key, value []byte, err error) {
 }
 
 // Get returns the value associated with key, or nil if no such value exists.
-//TODO pass dst buf
-func (t *BTree) Get(key []byte) (value []byte, err error) {
+// The returned slice may be a sub-slice of dst if dst was large enough to hold
+// the entire content.  Otherwise, a newly allocated slice will be returned.
+// It is valid to pass a nil dst.
+func (t *BTree) Get(dst, key []byte) (value []byte, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
 	t.serial++ //TODO make .get R/O
-	return t.root.get(t.store, nil, t.collate, key)
+	buf := t.store.balloc(maxBuf)
+	defer t.store.bfree(buf)
+	if buf, err = t.root.get(t.store, buf, t.collate, key); buf == nil || err != nil {
+		return
+	}
+
+	value = need(len(buf), dst)
+	copy(value, buf)
+	return
 }
 
 // Handle reports t's handle.

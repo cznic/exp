@@ -128,7 +128,7 @@ func (a *Array) binc(delta int64, key []byte) (r int64, err error) {
 }
 
 func (a *Array) bget(key []byte) (value []byte, err error) {
-	return a.tree.Get(append(a.prefix, key...))
+	return a.tree.Get(nil, append(a.prefix, key...))
 }
 
 func (a *Array) bdelete(key []byte) (err error) {

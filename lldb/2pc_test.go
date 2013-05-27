@@ -83,7 +83,7 @@ func TestACID0MemBTreeCaps(t *testing.T) {
 		t.Fatal(len(b), err)
 	}
 
-	g, err := tr.Get(nil)
+	g, err := tr.Get(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,8 @@ func TestACIDFiler0(t *testing.T) {
 	for k, v := range ref {
 		binary.BigEndian.PutUint64(key[:], uint64(k))
 		binary.BigEndian.PutUint64(val[:], uint64(v))
-		b, err := tr.Get(key[:])
+		var b []byte
+		b, err = tr.Get(b, key[:])
 		if err != nil || b == nil || !bytes.Equal(b, val[:]) {
 			t.Error(err, b, val[:])
 			return
