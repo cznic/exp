@@ -97,9 +97,8 @@ func (o *Options) check(dbname string, new, lock bool) (err error) {
 		lname = o.lockName(dbname)
 		if o.lock, err = os.OpenFile(lname, os.O_CREATE|os.O_EXCL|os.O_RDONLY, 0666); err != nil {
 			if os.IsExist(err) {
-				return fmt.Errorf("cannot access DB %q: lock file %q exists", dbname, lname)
+				err = fmt.Errorf("cannot access DB %q: lock file %q exists", dbname, lname)
 			}
-
 			return
 		}
 	}
@@ -117,10 +116,16 @@ func (o *Options) check(dbname string, new, lock bool) (err error) {
 		switch new {
 		case true:
 			if o.wal, err = os.OpenFile(o.WAL, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0666); err != nil {
+				if os.IsExist(err) {
+					err = fmt.Errorf("cannot create DB %q: WAL file %q exists", dbname, o.WAL)
+				}
 				return
 			}
 		case false:
 			if o.wal, err = os.OpenFile(o.WAL, os.O_RDWR, 0666); err != nil {
+				if os.IsNotExist(err) {
+					err = fmt.Errorf("cannot open DB %q: WAL file %q doesn't exist", dbname, o.WAL)
+				}
 				return
 			}
 		}

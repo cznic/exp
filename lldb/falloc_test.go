@@ -541,8 +541,8 @@ func TestVerify2(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		a.flt.setHead(2, 1, a.f)
-		a.flt.setHead(4, 2, a.f)
+		a.flt.setHead(&a.buffers, 2, 1, a.f)
+		a.flt.setHead(&a.buffers, 4, 2, a.f)
 		err = a.Verify(
 			NewMemFiler(),
 			func(err error) bool {
@@ -740,8 +740,8 @@ func TestAllocatorMakeUsedBlock(t *testing.T) {
 	}
 
 	var c allocatorBlock
-	dst := a.buffers.Alloc(zappy.MaxEncodedLen(maxRq + 1))
-	defer a.buffers.Free()
+	dst := a.balloc(zappy.MaxEncodedLen(maxRq + 1))
+	defer a.bfree(dst)
 	if _, _, err := a.makeUsedBlock(dst, &c, make([]byte, maxRq)); err != nil {
 		t.Fatal(err)
 	}

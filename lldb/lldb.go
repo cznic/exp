@@ -13,8 +13,6 @@
 // two instances of an application - it will get corrupted (no file locking is
 // implemented and this task is delegated to lldb's clients).
 //
-// Only few attempts to profile and/or improve performance were made (TODO).
-//
 // WARNING: THE LLDB API IS SUBJECT TO CHANGE.
 //
 // Filers

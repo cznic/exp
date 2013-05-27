@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	nBufs  = 9          // bufs.New(nBufs)
 	maxBuf = maxRq + 20 // bufs,Buffers.Alloc
 )
 
@@ -277,8 +276,8 @@ Note: No Allocator method returns io.EOF.
 type Allocator struct {
 	f        Filer
 	flt      flt
-	Compress bool         // enables content compression
-	buffers  bufs.Buffers //TODO bufs.buffers -> bufs.Cache?
+	Compress bool // enables content compression
+	buffers  bufs.Cache
 	cache    cache
 	m        map[int64]*node
 	lru      lst
@@ -294,7 +293,6 @@ type Allocator struct {
 func NewAllocator(f Filer) (a *Allocator, err error) {
 	a = &Allocator{
 		f:       f,
-		buffers: bufs.New(nBufs),
 		cacheSz: 10,
 	}
 
@@ -303,12 +301,12 @@ func NewAllocator(f Filer) (a *Allocator, err error) {
 	case *RollbackFiler:
 		x.afterRollback = func() error {
 			a.cinit()
-			return a.flt.load(a.f, 0)
+			return a.flt.load(a.f, &a.buffers, 0)
 		}
 	case *ACIDFiler0:
 		x.RollbackFiler.afterRollback = func() error {
 			a.cinit()
-			return a.flt.load(a.f, 0)
+			return a.flt.load(a.f, &a.buffers, 0)
 		}
 	}
 
@@ -332,15 +330,15 @@ func NewAllocator(f Filer) (a *Allocator, err error) {
 		return a, a.f.EndUpdate()
 	}
 
-	return a, a.flt.load(f, 0)
+	return a, a.flt.load(f, &a.buffers, 0)
 }
 
 func (a *Allocator) balloc(n int) []byte {
-	return a.buffers.Alloc(n)
+	return a.buffers.Get(n)
 }
 
-func (a *Allocator) bfree() {
-	a.buffers.Free()
+func (a *Allocator) bfree(b []byte) {
+	a.buffers.Put(b)
 }
 
 // CacheStats reports cache statistics.
@@ -410,18 +408,15 @@ func (a *Allocator) cfree(h int64) {
 func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 	var c allocatorBlock
 	buf := a.balloc(zappy.MaxEncodedLen(len(b)))
-	defer a.bfree()
+	defer a.bfree(buf)
 	if buf, _, err = a.makeUsedBlock(buf, &c, b); err != nil {
 		return
 	}
 
-	defer func() { //TODO sans defer
-		if err == nil {
-			a.cadd(b, handle)
-		}
-	}()
-
-	return a.alloc(buf, &c)
+	if handle, err = a.alloc(buf, &c); err == nil {
+		a.cadd(b, handle)
+	}
+	return
 }
 
 func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
@@ -596,7 +591,7 @@ func (a *Allocator) link(h, atoms int64) (err error) {
 		return
 	}
 
-	return a.flt.setHead(h, atoms, a.f)
+	return a.flt.setHead(&a.buffers, h, atoms, a.f)
 }
 
 // Remove free block h from the free list
@@ -604,7 +599,7 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 	switch {
 	case p == 0 && n == 0:
 		// single item list, must be head
-		return a.flt.setHead(0, atoms, a.f)
+		return a.flt.setHead(&a.buffers, 0, atoms, a.f)
 	case p == 0 && n != 0:
 		// head of list (has next item[s])
 		if err = a.prev(n, 0); err != nil {
@@ -612,7 +607,7 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 		}
 
 		// new head
-		return a.flt.setHead(n, atoms, a.f)
+		return a.flt.setHead(&a.buffers, n, atoms, a.f)
 	case p != 0 && n == 0:
 		// last item in list
 		return a.next(p, 0)
@@ -650,7 +645,7 @@ func (a *Allocator) Get(dst []byte, handle int64) (b []byte, err error) {
 	if n, ok := a.m[handle]; ok {
 		a.lru.moveToFront(n)
 		b = need(len(n.b), dst)
-		copy(b, n.b) //TODO -?
+		copy(b, n.b)
 		a.expHit++
 		a.hit++
 		return
@@ -671,7 +666,7 @@ func (a *Allocator) Get(dst []byte, handle int64) (b []byte, err error) {
 	}(handle)
 
 	first := a.balloc(16)
-	defer a.bfree()
+	defer a.bfree(first)
 	relocated := false
 	relocSrc := handle
 reloc:
@@ -702,7 +697,7 @@ reloc:
 			}
 		default:
 			cc := a.balloc(1)
-			defer a.bfree()
+			defer a.bfree(cc)
 			dlen := int(tag)
 			atoms := n2atoms(dlen)
 			tailOff := off + 16*int64(atoms) - 1
@@ -722,7 +717,7 @@ reloc:
 				return
 			case tagCompressed:
 				zbuf := a.balloc(dlen)
-				defer a.bfree()
+				defer a.bfree(zbuf)
 				off += 1
 				if err = a.read(zbuf, off); err != nil {
 					return dst[:0], err
@@ -735,7 +730,7 @@ reloc:
 		return dst[:0], nil
 	case tagUsedLong:
 		cc := a.balloc(1)
-		defer a.bfree()
+		defer a.bfree(cc)
 		dlen := m2n(int(first[1])<<8 | int(first[2]))
 		atoms := n2atoms(dlen)
 		tailOff := off + 16*int64(atoms) - 1
@@ -755,7 +750,7 @@ reloc:
 			return
 		case tagCompressed:
 			zbuf := a.balloc(dlen)
-			defer a.bfree()
+			defer a.bfree(zbuf)
 			off += 3
 			if err = a.read(zbuf, off); err != nil {
 				return dst[:0], err
@@ -791,7 +786,7 @@ func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 		a.cache.put(n)
 		n = a.cache.get(len(b))
 		n.h = handle
-		copy(n.b, b) //TODO -?
+		copy(n.b, b)
 		a.m[handle] = n
 	} else {
 		a.cadd(b, handle)
@@ -809,7 +804,7 @@ func (a *Allocator) realloc(handle int64, b []byte) (err error) {
 	)
 
 	dst := a.balloc(zappy.MaxEncodedLen(len(b)))
-	defer a.bfree()
+	defer a.bfree(dst)
 	if b, needAtoms0, err = a.makeUsedBlock(dst, &c, b); err != nil {
 		return
 	}
@@ -969,7 +964,7 @@ func (a *Allocator) nfo(h int64) (tag byte, s, p, n int64, err error) {
 	}
 
 	buf := a.balloc(22)
-	defer a.bfree()
+	defer a.bfree(buf)
 	if err = a.read(buf[:rq], off); err != nil {
 		return
 	}
@@ -1678,9 +1673,9 @@ func (f *flt) init() {
 	f[13].minSize = 4112
 }
 
-func (f *flt) load(fi Filer, off int64) (err error) {
-	//TODO buffers
-	var b [fltSz]byte
+func (f *flt) load(fi Filer, buffers *bufs.Cache, off int64) (err error) {
+	b := buffers.Get(fltSz)
+	defer buffers.Put(b)
 	if _, err = fi.ReadAt(b[:], off); err != nil {
 		return
 	}
@@ -1732,12 +1727,13 @@ func (f *flt) head(atoms int64) (h int64) {
 	}
 }
 
-func (f *flt) setHead(h, atoms int64, fi Filer) (err error) {
+func (f *flt) setHead(buffers *bufs.Cache, h, atoms int64, fi Filer) (err error) {
 	switch {
 	case atoms < 1:
 		panic(atoms)
 	case atoms >= maxFLTRq:
-		var b [7]byte //TODO buffers
+		b := buffers.Get(7)
+		defer buffers.Put(b)
 		if _, err = fi.WriteAt(h2b(b[:], h), 8*13+1); err != nil {
 			return
 		}
@@ -1749,7 +1745,8 @@ func (f *flt) setHead(h, atoms int64, fi Filer) (err error) {
 		g := f[lg:]
 		for i := range f {
 			if atoms < g[i+1].minSize {
-				var b [7]byte //TODO buffers
+				b := buffers.Get(7)
+				defer buffers.Put(b)
 				if _, err = fi.WriteAt(h2b(b[:], h), 8*int64(i+lg)+1); err != nil {
 					return
 				}

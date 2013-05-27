@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"path"
 	"runtime"
 	"strings"
@@ -19,11 +18,6 @@ var dbg = func(s string, va ...interface{}) {
 	_, fn, fl, _ := runtime.Caller(1)
 	fmt.Printf("%s:%d: ", path.Base(fn), fl)
 	fmt.Printf(s+"\n", va...)
-}
-
-func TODO(s string, args ...interface{}) {
-	_, f, l, _ := runtime.Caller(1)
-	log.Fatalf(fmt.Sprintf("[TODO %s.%d]\n", path.Base(f), l)+s, args...)
 }
 
 func use(...interface{}) {}
