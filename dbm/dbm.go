@@ -236,7 +236,8 @@ func Open(name string, opts *Options) (db *DB, err error) {
 
 // Close closes the DB, rendering it unusable for I/O. It returns an error, if
 // any. Failing to call Close before exiting a program can render the DB
-// unusable.
+// unusable or, in case of using WAL/2PC, the last commited transaction may get
+// lost.
 //
 // Close is idempotent.
 func (db *DB) Close() (err error) {
