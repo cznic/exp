@@ -197,17 +197,17 @@ func (t *BTree) Dump(w io.Writer) (err error) {
 
 // Extract is a combination of Get and Delete. If the key exists in the tree,
 // it is returned (like Get) and also deleted from a tree in a more efficient
-// way which doesn't walk it twice.
-//
-//TODO pass dst
-func (t *BTree) Extract(key []byte) (value []byte, err error) {
+// way which doesn't walk it twice.  The returned slice may be a sub-slice of
+// dst if dst was large enough to hold the entire content.  Otherwise, a newly
+// allocated slice will be returned.  It is valid to pass a nil dst.
+func (t *BTree) Extract(dst, key []byte) (value []byte, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
 	t.serial++
-	return t.root.extract(t.store, nil, t.collate, key)
+	return t.root.extract(t.store, dst, t.collate, key)
 }
 
 // First returns the first KV pair of the tree, if it exists. Otherwise key == nil
@@ -1083,7 +1083,7 @@ func (p *btreeDataPage) insert(index int) {
 	return
 }
 
-//TODO pass dst
+//TODO pass dst: Later, not a public API
 func (p btreeDataPage) contentField(off int) (b []byte, h int64) {
 	p = p[off:]
 	switch n := int(p[0]); {
@@ -1096,7 +1096,7 @@ func (p btreeDataPage) contentField(off int) (b []byte, h int64) {
 	return
 }
 
-//TODO pass dst
+//TODO pass dst: Later, not a public API
 func (p btreeDataPage) content(a btreeStore, off int) (b []byte, err error) {
 	b, h := p.contentField(off)
 	if h == 0 {
@@ -1104,7 +1104,7 @@ func (p btreeDataPage) content(a btreeStore, off int) (b []byte, err error) {
 	}
 
 	// content has a handle
-	b2, err := a.Get(nil, h) //TODO(later) buffers
+	b2, err := a.Get(nil, h) //TODO buffers: Later, not a public API
 	if err != nil {
 		return nil, err
 	}
@@ -1812,6 +1812,7 @@ func (root btree) get(a btreeStore, dst []byte, c func(a, b []byte) int, key []b
 	}
 }
 
+//TODO actually use 'dst' to return 'value'
 func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key []byte) (value []byte, err error) {
 	var r []byte
 	if r, err = a.Get(dst, int64(root)); err != nil {

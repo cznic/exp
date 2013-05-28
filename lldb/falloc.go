@@ -1108,7 +1108,6 @@ type allocatorBlock struct {
 	tailSize int
 }
 
-//TODO pass dst
 func (a *Allocator) makeUsedBlock(dst []byte, c *allocatorBlock, b []byte) (w []byte, rqAtoms int, err error) {
 	c.headSize = 1
 	c.tail[0] = tagNotCompressed

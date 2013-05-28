@@ -13,7 +13,6 @@ package dbm
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cznic/exp/lldb"
+	"github.com/cznic/fileutil"
 )
 
 const (
@@ -75,6 +75,7 @@ type DB struct {
 	fcache        treeCache       // Files cache
 	filer         lldb.Filer      // Wraps f
 	gracePeriod   time.Duration   // WAL grace period
+	isMem         bool            // No signal capture
 	lastCommitErr error
 	lock          *os.File       // The DB file lock
 	removing      map[int64]bool // BTrees being removed
@@ -144,7 +145,8 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 	}
 
 	db.alloc.Compress = compress
-	return
+	db.isMem = isMem
+	return db, db.boot()
 }
 
 // CreateMem creates an in-memory DB not backed by a disk file.  Memory DBs are
@@ -154,19 +156,23 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 // For the meaning of opts please see documentation of Options.
 func CreateMem(opts *Options) (db *DB, err error) {
 	f := lldb.NewMemFiler()
+	if opts.ACID == ACIDFull {
+		opts.ACID = ACIDTransactions
+	}
 	return create(nil, f, opts, true)
 }
 
-// CreateTemp creates a new temporary DB in the directory dir with a name
-// beginning with prefix. If dir is the empty string, CreateTemp uses the
-// default directory for temporary files (see os.TempDir). Multiple programs
-// calling CreateTemp simultaneously will not choose the same file name for the
-// DB. The caller can use Name() to find the pathname of the DB file. It is the
-// caller's responsibility to remove the file when no longer needed.
+// CreateTemp creates a new temporary DB in the directory dir with a basename
+// beginning with prefix and name ending in suffix. If dir is the empty string,
+// CreateTemp uses the default directory for temporary files (see os.TempDir).
+// Multiple programs calling CreateTemp simultaneously will not choose the same
+// file name for the DB. The caller can use Name() to find the pathname of the
+// DB file. It is the caller's responsibility to remove the file when no longer
+// needed.
 //
 // For the meaning of opts please see documentation of Options.
-func CreateTemp(dir, prefix string, opts *Options) (db *DB, err error) {
-	f, err := ioutil.TempFile(dir, prefix)
+func CreateTemp(dir, prefix, suffix string, opts *Options) (db *DB, err error) {
+	f, err := fileutil.TempFile(dir, prefix, suffix)
 	if err != nil {
 		return
 	}
@@ -187,6 +193,12 @@ func Open(name string, opts *Options) (db *DB, err error) {
 			lock.Close()
 			os.Remove(n)
 			db = nil
+		}
+		if err != nil {
+			if db != nil {
+				db.Close()
+				db = nil
+			}
 		}
 	}()
 
@@ -236,8 +248,8 @@ func Open(name string, opts *Options) (db *DB, err error) {
 
 // Close closes the DB, rendering it unusable for I/O. It returns an error, if
 // any. Failing to call Close before exiting a program can render the DB
-// unusable or, in case of using WAL/2PC, the last commited transaction may get
-// lost.
+// unusable or, in case of using WAL/2PC, the last committed transaction may
+// get lost.
 //
 // Close is idempotent.
 func (db *DB) Close() (err error) {
@@ -630,6 +642,15 @@ func (db *DB) removeArray(prefix int, array string) (err error) {
 func (db *DB) boot() (err error) {
 	const tmp = "/tmp/"
 
+	if !db.isMem {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, os.Kill)
+		go func() {
+			<-c
+			db.Close()
+		}()
+	}
+
 	aa, err := db.Arrays()
 	if err != nil {
 		return
@@ -710,14 +731,6 @@ func (db *DB) boot() (err error) {
 		db.wg.Add(1)
 		go db.victor(removes, h)
 	}
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
-	go func() {
-		<-c
-		db.Close()
-	}()
-
 	return
 }
 
@@ -911,6 +924,10 @@ func (db *DB) leave(err *error) error {
 			db.filer.Rollback() // return the original, input error
 		default:
 			*err = db.filer.EndUpdate()
+			if *err != nil {
+				db.acidState = stEndUpdateFailed
+				db.lastCommitErr = *err
+			}
 		}
 	}
 	db.bkl.Unlock()
@@ -1066,17 +1083,17 @@ func (db *DB) Rollback() (err error) {
 	return db.filer.Rollback()
 }
 
-// Verify attempts to find any structural errors in DB wrt the
-// organization of it as defined by lldb.Allocator. 'bitmap' is a scratch pad for
-// necessary bookkeeping and will grow to at most to DB size/128 (0,78%). Any problems found are reported to 'log' except
-// non verify related errors like disk read fails etc. If 'log' returns false
-// or the error doesn't allow to (reliably) continue, the verification process
-// is stopped and an error is returned from the Verify function. Passing a nil
-// log works like providing a log function always returning false. Any
-// non-structural errors, like for instance Filer read errors, are NOT reported
-// to 'log', but returned as the Verify's return value, because Verify cannot
-// proceed in such cases. Verify returns nil only if it fully completed
-// verifying DB without detecting any error.
+// Verify attempts to find any structural errors in DB wrt the organization of
+// it as defined by lldb.Allocator. 'bitmap' is a scratch pad for necessary
+// bookkeeping and will grow to at most to DB size/128 (0,78%). Any problems
+// found are reported to 'log' except non verify related errors like disk read
+// fails etc. If 'log' returns false or the error doesn't allow to (reliably)
+// continue, the verification process is stopped and an error is returned from
+// the Verify function. Passing a nil log works like providing a log function
+// always returning false. Any non-structural errors, like for instance Filer
+// read errors, are NOT reported to 'log', but returned as the Verify's return
+// value, because Verify cannot proceed in such cases. Verify returns nil only
+// if it fully completed verifying DB without detecting any error.
 //
 // It is recommended to limit the number reported problems by returning false
 // from 'log' after reaching some limit. Huge and corrupted DB can produce an
@@ -1088,14 +1105,23 @@ func (db *DB) Rollback() (err error) {
 // free space, then a 4th scan (a faster one) is performed to precisely report
 // all of them.
 //
-// If the DB to be verified is reasonably small, respective if its
-// size/128 can comfortably fit within process's free memory, then it is
-// recommended to consider using a lldb.MemFiler for the bit map.
-//
 // Statistics are returned via 'stats' if non nil. The statistics are valid
 // only if Verify succeeded, ie. it didn't reported anything to log and it
 // returned a nil error.
-func (db *DB) Verify(bitmap lldb.Filer, log func(error) bool, stats *lldb.AllocStats) (err error) {
+func (db *DB) Verify(log func(error) bool, stats *lldb.AllocStats) (err error) {
+	bitmapf, err := fileutil.TempFile(".", "verifier", ".tmp")
+	if err != nil {
+		return
+	}
+
+	defer func() {
+		tn := bitmapf.Name()
+		bitmapf.Close()
+		os.Remove(tn)
+	}()
+
+	bitmap := lldb.NewSimpleFileFiler(bitmapf)
+
 	if err = db.enter(); err != nil {
 		return
 	}

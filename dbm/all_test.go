@@ -2818,7 +2818,7 @@ loop:
 }
 
 func TestLocking(t *testing.T) {
-	db, err := CreateTemp(".", "test-dbm-", &Options{})
+	db, err := CreateTemp(".", "test-dbm-", ".db", &Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
