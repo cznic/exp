@@ -44,7 +44,7 @@ func TestProf(t *testing.T) {
 
 	filer := lldb.NewSimpleFileFiler(f) // file
 	//filer := lldb.NewMemFiler()         // mem
-	a, err := lldb.NewAllocator(filer)
+	a, err := lldb.NewAllocator(filer, &lldb.Options{})
 	if err != nil {
 		t.Error(err)
 		return
@@ -89,7 +89,7 @@ func BenchmarkMem(b *testing.B) {
 	}()
 
 	filer := lldb.NewSimpleFileFiler(f)
-	a, err := lldb.NewAllocator(filer)
+	a, err := lldb.NewAllocator(filer, &lldb.Options{})
 	if err != nil {
 		b.Error(err)
 		return

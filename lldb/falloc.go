@@ -1795,13 +1795,13 @@ func (c *cache) get2(n int) (r *node, isZeroed bool) {
 	s := *c
 	lens := len(s)
 	if lens == 0 {
-		return &node{b: make([]byte, n)}, true
+		return &node{b: make([]byte, n, mathutil.Min(2*n, maxBuf))}, true
 	}
 
 	i := sort.Search(lens, func(x int) bool { return len(s[x].b) >= n })
 	if i == lens {
 		i--
-		s[i].b, isZeroed = make([]byte, n), true
+		s[i].b, isZeroed = make([]byte, n, mathutil.Min(2*n, maxBuf)), true
 	}
 
 	r = s[i]

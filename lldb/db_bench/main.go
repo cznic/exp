@@ -186,7 +186,7 @@ func fillseq() {
 	}()
 
 	filer := lldb.NewSimpleFileFiler(f)
-	a, err := lldb.NewAllocator(filer)
+	a, err := lldb.NewAllocator(filer, &lldb.Options{})
 	if err != nil {
 		log.Println(err)
 		return
@@ -200,16 +200,19 @@ func fillseq() {
 		return
 	}
 
-	var key [16]byte
+	var keys [N][16]byte
+	for i := range keys {
+		binary.BigEndian.PutUint32(keys[i][:], uint32(i))
+	}
+
+	runtime.GC()
 	t0 := time.Now()
-	for i := uint32(0); i < N; i++ {
-		binary.BigEndian.PutUint32(key[:], i)
+	for _, key := range keys {
 		if err = b.Set(key[:], value100); err != nil {
 			log.Println(err)
 			return
 		}
 	}
-
 	if err := filer.Sync(); err != nil {
 		log.Println(err)
 		return
