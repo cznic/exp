@@ -132,7 +132,7 @@ import (
 )
 
 const (
-	N = 1e5
+	N = 1e6
 )
 
 var value100 = []byte("Here is a performance report (with explanatioaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
@@ -140,7 +140,7 @@ var value100 = []byte("Here is a performance report (with explanatioaaaaaaaaaaaa
 func main() {
 	log.SetFlags(log.Lshortfile | log.Ltime)
 	fmt.Printf(
-		`lldb:      version exp
+		`dbm:        version exp
 Keys:       16 bytes each
 Values:     100 bytes each (50 bytes after compression)
 Entries:    1000000
