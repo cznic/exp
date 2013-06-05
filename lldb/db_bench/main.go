@@ -132,6 +132,7 @@ import (
 	"runtime/pprof"
 	"time"
 
+	"github.com/cznic/bufs"
 	"github.com/cznic/exp/lldb"
 )
 
@@ -228,4 +229,6 @@ func fillseq() {
 	secs := float64(d/time.Nanosecond) / float64(time.Second)
 	sz := fi.Size()
 	fmt.Printf("fillseq      :%19v/op;%7.1f MB/s (%g secs, %d bytes)\n", d/N, float64(sz)/secs/1e6, secs, sz)
+	nn, bytes := bufs.GCache.Stats()
+	fmt.Printf("%d %d\n", nn, bytes)
 }

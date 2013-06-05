@@ -59,7 +59,7 @@ func TestProf(t *testing.T) {
 	}
 
 	var key [16]byte
-	for i := uint32(0); int(i) < 100000; i++ {
+	for i := uint32(0); int(i) < 1e6; i++ {
 		binary.BigEndian.PutUint32(key[:], i)
 		if err = b.Set(key[:], value100); err != nil {
 			t.Error(err)

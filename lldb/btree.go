@@ -242,8 +242,8 @@ func (t *BTree) Get(dst, key []byte) (value []byte, err error) {
 	}
 
 	t.serial++ //TODO make .get R/O
-	buf := t.store.balloc(maxBuf)
-	defer t.store.bfree(buf)
+	buf := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(buf)
 	if buf, err = t.root.get(t.store, buf, t.collate, key); buf == nil || err != nil {
 		return
 	}
@@ -373,9 +373,9 @@ func (t *BTree) Set(key, value []byte) (err error) {
 	}
 
 	t.serial++
-	dst := t.store.balloc(maxBuf)
+	dst := bufs.GCache.Get(maxBuf)
 	_, err = t.root.put(dst, t.store, t.collate, key, value, true)
-	t.store.bfree(dst)
+	bufs.GCache.Put(dst)
 	return
 }
 
@@ -518,8 +518,8 @@ func CreateBTree(store *Allocator, collate func(a, b []byte) int) (bt *BTree, ha
 // (handled by some upper layer "dispatcher").
 func OpenBTree(store *Allocator, collate func(a, b []byte) int, handle int64) (bt *BTree, err error) {
 	r := &BTree{store: store, root: btree(handle), collate: collate}
-	b := store.balloc(7)
-	defer store.bfree(b)
+	b := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(b)
 	if b, err = store.Get(b, handle); err != nil {
 		return
 	}
@@ -554,8 +554,6 @@ type btreeStore interface {
 	Free(handle int64) (err error)
 	Get(dst []byte, handle int64) (b []byte, err error)
 	Realloc(handle int64, b []byte) (err error)
-	balloc(n int) []byte
-	bfree([]byte)
 }
 
 // Read only zero bytes
@@ -576,21 +574,12 @@ func init() {
 }
 
 type memBTreeStore struct {
-	h       int64
-	m       map[int64][]byte
-	buffers bufs.Cache
+	h int64
+	m map[int64][]byte
 }
 
 func newMemBTreeStore() *memBTreeStore {
 	return &memBTreeStore{h: 0, m: map[int64][]byte{}}
-}
-
-func (s *memBTreeStore) balloc(n int) []byte {
-	return s.buffers.Get(n)
-}
-
-func (s *memBTreeStore) bfree(b []byte) {
-	s.buffers.Put(b)
 }
 
 func (s *memBTreeStore) String() string {
@@ -736,8 +725,8 @@ func (p *btreeIndexPage) insert3(index int, dataPage, child int64) {
 }
 
 func (p btreeIndexPage) cmp(a btreeStore, c func(a, b []byte) int, keyA []byte, keyBIndex int) (int, error) {
-	b := a.balloc(maxBuf)
-	defer a.bfree(b)
+	b := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(b)
 	dp, err := a.Get(b, p.dataPage(keyBIndex))
 	if err != nil {
 		return 0, err
@@ -773,8 +762,8 @@ func (p *btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64
 	}
 
 	if parentIndex >= 0 {
-		var pp btreeIndexPage = a.balloc(maxBuf)
-		defer a.bfree(pp)
+		var pp btreeIndexPage = bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(pp)
 		pp, err = a.Get(pp, parent)
 		if err != nil {
 			return err
@@ -822,8 +811,8 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 		return err
 	}
 
-	var left btreeIndexPage = a.balloc(maxBuf)
-	defer a.bfree(left)
+	var left btreeIndexPage = bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(left)
 
 	if lh != 0 {
 		if left, err = a.Get(left, lh); err != nil {
@@ -831,8 +820,8 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 		}
 
 		if lc := btreeIndexPage(left).len(); lc > kIndex {
-			var pp = a.balloc(maxBuf)
-			defer a.bfree(pp)
+			var pp = bufs.GCache.Get(maxBuf)
+			defer bufs.GCache.Put(pp)
 			if pp, err = a.Get(pp, parent); err != nil {
 				return
 			}
@@ -859,15 +848,15 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 	}
 
 	if rh != 0 {
-		right := a.balloc(maxBuf)
-		defer a.bfree(right)
+		right := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(right)
 		if right, err = a.Get(right, rh); err != nil {
 			return err
 		}
 
 		if rc := btreeIndexPage(right).len(); rc > kIndex {
-			pp := a.balloc(maxBuf)
-			defer a.bfree(pp)
+			pp := bufs.GCache.Get(maxBuf)
+			defer bufs.GCache.Put(pp)
 			if pp, err = a.Get(pp, parent); err != nil {
 				return err
 			}
@@ -908,14 +897,14 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 
 // must persist all changes made
 func (p *btreeIndexPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, parentIndex int) (err error) {
-	pp := a.balloc(maxBuf)
-	defer a.bfree(pp)
+	pp := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(pp)
 	if pp, err = a.Get(pp, parent); err != nil {
 		return err
 	}
 
-	right := a.balloc(maxBuf)
-	defer a.bfree(right)
+	right := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(right)
 	if right, err = a.Get(right, rh); err != nil {
 		return err
 	}
@@ -1013,7 +1002,7 @@ Value[X] == 15+kKV+2*kKV*X
 type btreeDataPage []byte
 
 func newBTreeDataPage() (p btreeDataPage) {
-	p = make([]byte, 1+2*7, 1+2*7+kData*2*kKV)
+	p = bufs.GCache.Cget(1 + 2*7 + (kData+1)*2*kKV)[:1+2*7]
 	p[0] = tagBTreeDataPage
 	return
 }
@@ -1224,6 +1213,7 @@ func (p *btreeDataPage) insertItem(a btreeStore, index int, key, value []byte) (
 
 func (p *btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex, index int, key, value []byte) (err error) {
 	right, rh, err := newBTreeDataPageAlloc(a)
+	defer bufs.GCache.Put(right)
 	if err != nil {
 		return err
 	}
@@ -1231,8 +1221,8 @@ func (p *btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex,
 	if next := p.next(); next != 0 {
 		right.setNext(p.next())
 		nxh := right.next()
-		nx := a.balloc(maxBuf)
-		defer a.bfree(nx)
+		nx := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(nx)
 		if nx, err = a.Get(nx, nxh); err != nil {
 			return err
 		}
@@ -1250,8 +1240,8 @@ func (p *btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex,
 	p.setLen(kData)
 
 	if parentIndex >= 0 {
-		var pp btreeIndexPage = a.balloc(maxBuf)
-		defer a.bfree(pp)
+		var pp btreeIndexPage = bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(pp)
 		if pp, err = a.Get(pp, parent); err != nil {
 			return
 		}
@@ -1297,8 +1287,8 @@ func (p *btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentInd
 	}
 
 	if leftH != 0 {
-		left := btreeDataPage(a.balloc(maxBuf))
-		defer a.bfree(left)
+		left := btreeDataPage(bufs.GCache.Get(maxBuf))
+		defer bufs.GCache.Put(left)
 		if left, err = a.Get(left, leftH); err != nil {
 			return
 		}
@@ -1319,8 +1309,8 @@ func (p *btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentInd
 	}
 
 	if rightH != 0 {
-		right := btreeDataPage(a.balloc(maxBuf))
-		defer a.bfree(right)
+		right := btreeDataPage(bufs.GCache.Get(maxBuf))
+		defer bufs.GCache.Put(right)
 		if right, err = a.Get(right, rightH); err != nil {
 			return
 		}
@@ -1436,8 +1426,8 @@ func (p *btreeDataPage) extract(a btreeStore, index int) (value []byte, err erro
 
 func checkSiblings(a btreeStore, parent int64, parentIndex int) (left, right int64, err error) {
 	if parentIndex >= 0 {
-		var p btreeIndexPage = a.balloc(maxBuf)
-		defer a.bfree(p)
+		var p btreeIndexPage = bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(p)
 		if p, err = a.Get(p, parent); err != nil {
 			return
 		}
@@ -1460,8 +1450,8 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 	}
 
 	if lh != 0 {
-		left := a.balloc(maxBuf)
-		defer a.bfree(left)
+		left := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(left)
 		if left, err = a.Get(left, lh); err != nil {
 			return err
 		}
@@ -1477,8 +1467,8 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 	}
 
 	if rh != 0 {
-		right := a.balloc(maxBuf)
-		defer a.bfree(right)
+		right := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(right)
 		if right, err = a.Get(right, rh); err != nil {
 			return err
 		}
@@ -1494,8 +1484,8 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 	}
 
 	if lh != 0 {
-		left := a.balloc(maxBuf)
-		defer a.bfree(left)
+		left := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(left)
 		if left, err = a.Get(left, lh); err != nil {
 			return err
 		}
@@ -1512,8 +1502,8 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 
 // concat must persist all changes made.
 func (p btreeDataPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, parentIndex int) (err error) {
-	right := a.balloc(maxBuf)
-	defer a.bfree(right)
+	right := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(right)
 	if right, err = a.Get(right, rh); err != nil {
 		return err
 	}
@@ -1521,8 +1511,8 @@ func (p btreeDataPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, p
 	(*btreeDataPage)(&right).moveLeft(&p, btreeDataPage(right).len())
 	nxh := btreeDataPage(right).next()
 	if nxh != 0 {
-		nx := a.balloc(maxBuf)
-		defer a.bfree(nx)
+		nx := bufs.GCache.Get(maxBuf)
+		defer bufs.GCache.Put(nx)
 		if nx, err = a.Get(nx, nxh); err != nil {
 			return err
 		}
@@ -1537,8 +1527,8 @@ func (p btreeDataPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, p
 		return err
 	}
 
-	pp := a.balloc(maxBuf)
-	defer a.bfree(pp)
+	pp := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(pp)
 	if pp, err = a.Get(pp, parent); err != nil {
 		return err
 	}
@@ -1574,8 +1564,8 @@ func newBTree(a btreeStore) (btree, error) {
 }
 
 func (root btree) String(a btreeStore) string {
-	r := a.balloc(16)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(16)
+	defer bufs.GCache.Put(r)
 	r, err := a.Get(r, int64(root))
 	if err != nil {
 		panic(err)
@@ -1596,8 +1586,8 @@ func (root btree) String(a btreeStore) string {
 		}
 
 		m[h] = true
-		var b btreePage = a.balloc(maxBuf)
-		a.bfree(b)
+		var b btreePage = bufs.GCache.Get(maxBuf)
+		bufs.GCache.Put(b)
 		var err error
 		if b, err = a.Get(b, h); err != nil {
 			panic(err)
@@ -1662,6 +1652,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 	var h int64
 	if iroot == 0 {
 		p := newBTreeDataPage()
+		defer bufs.GCache.Put(p)
 		if value, written, err = upd(key, nil); err != nil || !written {
 			return
 		}
@@ -1683,11 +1674,11 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 	var parent int64
 	ph := iroot
 
-	p := btreePage(a.balloc(maxBuf))
-	defer a.bfree(p)
+	p := btreePage(bufs.GCache.Get(maxBuf))
+	defer bufs.GCache.Put(p)
 
 	for {
-		if p, err = a.Get(p, ph); err != nil {
+		if p, err = a.Get(p[:cap(p)], ph); err != nil {
 			return
 		}
 
@@ -1905,8 +1896,8 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 }
 
 func (root btree) deleteAny(a btreeStore) (bool, error) {
-	r := a.balloc(7)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(r)
 	var err error
 	if r, err = a.Get(r, int64(root)); err != nil {
 		return false, err
@@ -1929,8 +1920,8 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 		index := p.len() / 2
 		if p.isIndex() {
 			dph := btreeIndexPage(p).dataPage(index)
-			dp := a.balloc(maxBuf)
-			defer a.bfree(dp)
+			dp := bufs.GCache.Get(maxBuf)
+			defer bufs.GCache.Put(dp)
 			if dp, err = a.Get(dp, dph); err != nil {
 				return false, err
 			}
@@ -1978,8 +1969,8 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 }
 
 func (root btree) first(a btreeStore) (ph int64, p btreeDataPage, err error) {
-	r := a.balloc(7)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(r)
 	if r, err = a.Get(r, int64(root)); err != nil {
 		return
 	}
@@ -1998,8 +1989,8 @@ func (root btree) first(a btreeStore) (ph int64, p btreeDataPage, err error) {
 }
 
 func (root btree) last(a btreeStore) (ph int64, p btreeDataPage, err error) {
-	r := a.balloc(7)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(r)
 	if r, err = a.Get(r, int64(root)); err != nil {
 		return
 	}
@@ -2019,8 +2010,8 @@ func (root btree) last(a btreeStore) (ph int64, p btreeDataPage, err error) {
 
 // key >= p[index].key
 func (root btree) seek(a btreeStore, c func(a, b []byte) int, key []byte) (p btreeDataPage, index int, equal bool, err error) {
-	r := a.balloc(7)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(r)
 	if r, err = a.Get(r, int64(root)); err != nil {
 		return
 	}
@@ -2052,8 +2043,8 @@ func (root btree) seek(a btreeStore, c func(a, b []byte) int, key []byte) (p btr
 }
 
 func (root btree) clear(a btreeStore) (err error) {
-	r := a.balloc(7)
-	defer a.bfree(r)
+	r := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(r)
 	if r, err = a.Get(r, int64(root)); err != nil {
 		return
 	}
@@ -2072,8 +2063,8 @@ func (root btree) clear(a btreeStore) (err error) {
 }
 
 func (root btree) clear2(a btreeStore, ph int64) (err error) {
-	var p = a.balloc(maxBuf)
-	defer a.bfree(p)
+	var p = bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(p)
 	if p, err = a.Get(p, ph); err != nil {
 		return
 	}
