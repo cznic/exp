@@ -690,9 +690,8 @@ func (p btreeIndexPage) setDataPage(index int, dp int64) {
 	h2b(p[8+14*index:], dp)
 }
 
-func (p *btreeIndexPage) insert(index int) {
-	q := *p
-	switch len0 := p.len(); {
+func (q btreeIndexPage) insert(index int) btreeIndexPage {
+	switch len0 := q.len(); {
 	case index < len0:
 		has := len(q)
 		need := has + 14
@@ -713,15 +712,14 @@ func (p *btreeIndexPage) insert(index int) {
 			q = append(q, zeros[:14]...)
 		}
 	}
-	*p = q
-	return
+	return q
 }
 
-func (p *btreeIndexPage) insert3(index int, dataPage, child int64) {
-	p.insert(index)
+func (p btreeIndexPage) insert3(index int, dataPage, child int64) btreeIndexPage {
+	p = p.insert(index)
 	p.setDataPage(index, dataPage)
 	p.setChild(index+1, child)
-	return
+	return p
 }
 
 func (p btreeIndexPage) cmp(a btreeStore, c func(a, b []byte) int, keyA []byte, keyBIndex int) (int, error) {
@@ -735,80 +733,75 @@ func (p btreeIndexPage) cmp(a btreeStore, c func(a, b []byte) int, keyA []byte, 
 	return btreeDataPage(dp).cmp(a, c, keyA, 0)
 }
 
-func (p *btreeIndexPage) setLen(n int) {
-	q := *p
+func (q btreeIndexPage) setLen(n int) btreeIndexPage {
 	q = q[:cap(q)]
 	need := 8 + 14*n
 	if need < len(q) {
-		*p = q[:need]
-		return
+		return q[:need]
 	}
-	*p = append(q, make([]byte, need-len(q))...)
-	return
+	return append(q, make([]byte, need-len(q))...)
 }
 
-func (p *btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64, parentIndex int, index *int) error {
+func (p btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64, parentIndex int, index *int) (btreeIndexPage, error) {
 	right := newBTreeIndexPage(0)
-	right.setLen(kIndex)
-	copy(right[1:1+(2*kIndex+1)*7], (*p)[1+14*(kIndex+1):])
-	p.setLen(kIndex)
-	if err := a.Realloc(*ph, *p); err != nil {
-		return err
+	right = right.setLen(kIndex)
+	copy(right[1:1+(2*kIndex+1)*7], p[1+14*(kIndex+1):])
+	p = p.setLen(kIndex)
+	if err := a.Realloc(*ph, p); err != nil {
+		return nil, err
 	}
 
 	rh, err := a.Alloc(right)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if parentIndex >= 0 {
 		var pp btreeIndexPage = bufs.GCache.Get(maxBuf)
 		defer bufs.GCache.Put(pp)
-		pp, err = a.Get(pp, parent)
-		if err != nil {
-			return err
+		if pp, err = a.Get(pp, parent); err != nil {
+			return nil, err
 		}
-		pp.insert3(parentIndex, p.dataPage(kIndex), rh)
+		pp = pp.insert3(parentIndex, p.dataPage(kIndex), rh)
 		if err = a.Realloc(parent, pp); err != nil {
-			return err
+			return nil, err
 		}
 
 	} else {
 		nr := newBTreeIndexPage(*ph)
-		nr.insert3(0, p.dataPage(kIndex), rh)
+		nr = nr.insert3(0, p.dataPage(kIndex), rh)
 		nrh, err := a.Alloc(nr)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err = a.Realloc(int64(root), h2b(make([]byte, 7), nrh)); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if *index > kIndex {
-		*p = right
+		p = right
 		*ph = rh
 		*index -= kIndex + 1
 	}
-	return nil
+	return p, nil
 }
 
 // p is dirty on return
-func (p *btreeIndexPage) extract(index int) {
+func (p btreeIndexPage) extract(index int) btreeIndexPage {
 	n := p.len() - 1
 	if index < n {
 		sz := (n-index)*14 + 7
-		copy((*p)[1+14*index:1+14*index+sz], (*p)[1+14*(index+1):])
+		copy(p[1+14*index:1+14*index+sz], p[1+14*(index+1):])
 	}
-	p.setLen(n)
-	return
+	return p.setLen(n)
 }
 
 // must persist all changes made
-func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *int64, parentIndex int, index *int) (err error) {
+func (p btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *int64, parentIndex int, index *int) (btreeIndexPage, error) {
 	lh, rh, err := checkSiblings(a, parent, parentIndex)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var left btreeIndexPage = bufs.GCache.Get(maxBuf)
@@ -816,34 +809,34 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 
 	if lh != 0 {
 		if left, err = a.Get(left, lh); err != nil {
-			return err
+			return nil, err
 		}
 
 		if lc := btreeIndexPage(left).len(); lc > kIndex {
 			var pp = bufs.GCache.Get(maxBuf)
 			defer bufs.GCache.Put(pp)
 			if pp, err = a.Get(pp, parent); err != nil {
-				return
+				return nil, err
 			}
 
 			pc := p.len()
-			p.setLen(pc + 1)
+			p = p.setLen(pc + 1)
 			di, si, sz := 1+1*14, 1+0*14, (2*pc+1)*7
-			copy((*p)[di:di+sz], (*p)[si:])
+			copy(p[di:di+sz], p[si:])
 			p.setChild(0, btreeIndexPage(left).child(lc))
 			p.setDataPage(0, btreeIndexPage(pp).dataPage(parentIndex-1))
 			*index++
 			btreeIndexPage(pp).setDataPage(parentIndex-1, btreeIndexPage(left).dataPage(lc-1))
-			(*btreeIndexPage)(&left).setLen(lc - 1)
+			left = left.setLen(lc - 1)
 			if err = a.Realloc(parent, pp); err != nil {
-				return err
+				return nil, err
 			}
 
-			if err = a.Realloc(*ph, *p); err != nil {
-				return err
+			if err = a.Realloc(*ph, p); err != nil {
+				return nil, err
 			}
 
-			return a.Realloc(lh, left)
+			return p, a.Realloc(lh, left)
 		}
 	}
 
@@ -851,76 +844,77 @@ func (p *btreeIndexPage) underflow(a btreeStore, root, iroot, parent int64, ph *
 		right := bufs.GCache.Get(maxBuf)
 		defer bufs.GCache.Put(right)
 		if right, err = a.Get(right, rh); err != nil {
-			return err
+			return nil, err
 		}
 
 		if rc := btreeIndexPage(right).len(); rc > kIndex {
 			pp := bufs.GCache.Get(maxBuf)
 			defer bufs.GCache.Put(pp)
 			if pp, err = a.Get(pp, parent); err != nil {
-				return err
+				return nil, err
 			}
 
 			pc := p.len()
-			p.setLen(pc + 1)
+			p = p.setLen(pc + 1)
 			p.setDataPage(pc, btreeIndexPage(pp).dataPage(parentIndex))
 			pc++
 			p.setChild(pc, btreeIndexPage(right).child(0))
 			btreeIndexPage(pp).setDataPage(parentIndex, btreeIndexPage(right).dataPage(0))
 			di, si, sz := 1+0*14, 1+1*14, (2*rc+1)*7
 			copy(right[di:di+sz], right[si:])
-			(*btreeIndexPage)(&right).setLen(rc - 1)
+			right = btreeIndexPage(right).setLen(rc - 1)
 			if err = a.Realloc(parent, pp); err != nil {
-				return err
+				return nil, err
 			}
 
-			if err = a.Realloc(*ph, *p); err != nil {
-				return err
+			if err = a.Realloc(*ph, p); err != nil {
+				return nil, err
 			}
 
-			return a.Realloc(rh, right)
+			return p, a.Realloc(rh, right)
 		}
 	}
 
 	if lh != 0 {
 		*index += left.len() + 1
-		if err = left.concat(a, root, iroot, parent, lh, *ph, parentIndex-1); err != nil {
-			return err
+		if left, err = left.concat(a, root, iroot, parent, lh, *ph, parentIndex-1); err != nil {
+			return p, err
 		}
 
-		*p, *ph = left, lh
-		return
+		p, *ph = left, lh
+		return p, nil
 	}
 
 	return p.concat(a, root, iroot, parent, *ph, rh, parentIndex)
 }
 
 // must persist all changes made
-func (p *btreeIndexPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, parentIndex int) (err error) {
+func (p btreeIndexPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, parentIndex int) (btreeIndexPage, error) {
 	pp := bufs.GCache.Get(maxBuf)
 	defer bufs.GCache.Put(pp)
-	if pp, err = a.Get(pp, parent); err != nil {
-		return err
+	pp, err := a.Get(pp, parent)
+	if err != nil {
+		return nil, err
 	}
 
 	right := bufs.GCache.Get(maxBuf)
 	defer bufs.GCache.Put(right)
 	if right, err = a.Get(right, rh); err != nil {
-		return err
+		return nil, err
 	}
 
 	pc := p.len()
 	rc := btreeIndexPage(right).len()
-	p.setLen(pc + rc + 1)
+	p = p.setLen(pc + rc + 1)
 	p.setDataPage(pc, btreeIndexPage(pp).dataPage(parentIndex))
 	di, si, sz := 1+14*(pc+1), 1+0*14, (2*rc+1)*7
-	copy((*p)[di:di+sz], right[si:])
-	if err = a.Realloc(ph, *p); err != nil {
-		return err
+	copy(p[di:di+sz], right[si:])
+	if err := a.Realloc(ph, p); err != nil {
+		return nil, err
 	}
 
-	if err = a.Free(rh); err != nil {
-		return
+	if err := a.Free(rh); err != nil {
+		return nil, err
 	}
 
 	if pc := btreeIndexPage(pp).len(); pc > 1 {
@@ -928,16 +922,16 @@ func (p *btreeIndexPage) concat(a btreeStore, root, iroot, parent, ph, rh int64,
 			di, si, sz := 8+parentIndex*14, 8+(parentIndex+1)*14, 2*(pc-1-parentIndex)*7
 			copy(pp[di:si+sz], pp[si:])
 		}
-		(*btreeIndexPage)(&pp).setLen(pc - 1)
-		return a.Realloc(parent, pp)
+		pp = btreeIndexPage(pp).setLen(pc - 1)
+		return p, a.Realloc(parent, pp)
 	}
 
-	if err = a.Free(iroot); err != nil {
-		return err
+	if err := a.Free(iroot); err != nil {
+		return nil, err
 	}
 
-	var b7 [7]byte
-	return a.Realloc(root, h2b(b7[:7], ph))
+	var b7 [7]byte //TODO GCache
+	return p, a.Realloc(root, h2b(b7[:7], ph))
 }
 
 /*
@@ -1017,16 +1011,13 @@ func (p btreeDataPage) len() int {
 	return (len(p) - 15) / (2 * kKV)
 }
 
-func (p *btreeDataPage) setLen(n int) {
-	q := *p
+func (q btreeDataPage) setLen(n int) btreeDataPage {
 	q = q[:cap(q)]
 	need := 15 + 2*kKV*n
 	if need < len(q) {
-		*p = q[:need]
-		return
+		return q[:need]
 	}
-	*p = append(q, make([]byte, need-len(q))...)
-	return
+	return append(q, make([]byte, need-len(q))...)
 }
 
 func (p btreeDataPage) prev() int64 {
@@ -1045,9 +1036,8 @@ func (p btreeDataPage) setNext(h int64) {
 	h2b(p[8:], h)
 }
 
-func (p *btreeDataPage) insert(index int) {
-	q := *p
-	switch len0 := p.len(); {
+func (q btreeDataPage) insert(index int) btreeDataPage {
+	switch len0 := q.len(); {
 	case index < len0:
 		has := len(q)
 		need := has + 2*kKV
@@ -1058,18 +1048,18 @@ func (p *btreeDataPage) insert(index int) {
 			q = append(q, zeros[:2*kKV]...)
 		}
 		q.copy(q, index+1, index, len0-index)
-		*p = q
+		return q
 	case index == len0:
 		has := len(q)
 		need := has + 2*kKV
 		switch {
 		case cap(q) >= need:
-			*p = q[:need]
+			return q[:need]
 		default:
-			*p = append(q, zeros[:2*kKV]...)
+			return append(q, zeros[:2*kKV]...)
 		}
 	}
-	return
+	panic("internal error")
 }
 
 //TODO pass dst: Later, not a public API
@@ -1183,39 +1173,37 @@ func (p btreeDataPage) copy(src btreeDataPage, di, si, n int) {
 }
 
 // {p,left} dirty on exit
-func (p *btreeDataPage) moveLeft(left *btreeDataPage, n int) {
+func (p btreeDataPage) moveLeft(left btreeDataPage, n int) (btreeDataPage, btreeDataPage) {
 	nl, np := left.len(), p.len()
-	left.setLen(nl + n)
-	left.copy(*p, nl, 0, n)
-	p.copy(*p, 0, n, np-n)
-	p.setLen(np - n)
-	return
+	left = left.setLen(nl + n)
+	left.copy(p, nl, 0, n)
+	p.copy(p, 0, n, np-n)
+	return p.setLen(np - n), left
 }
 
-func (p *btreeDataPage) moveRight(right *btreeDataPage, n int) {
+func (p btreeDataPage) moveRight(right btreeDataPage, n int) (btreeDataPage, btreeDataPage) {
 	nr, np := right.len(), p.len()
-	right.setLen(nr + n)
-	right.copy(*right, n, 0, nr)
-	right.copy(*p, 0, np-n, n)
-	p.setLen(np - n)
-	return
+	right = right.setLen(nr + n)
+	right.copy(right, n, 0, nr)
+	right.copy(p, 0, np-n, n)
+	return p.setLen(np - n), right
 }
 
-func (p *btreeDataPage) insertItem(a btreeStore, index int, key, value []byte) (err error) {
-	p.insert(index)
+func (p btreeDataPage) insertItem(a btreeStore, index int, key, value []byte) (btreeDataPage, error) {
+	p = p.insert(index)
 	di, sz := 15+2*kKV*index, 2*kKV
-	copy((*p)[di:di+sz], zeros[:sz])
-	if err = p.setKey(a, index, key); err != nil {
-		return
+	copy(p[di:di+sz], zeros[:sz])
+	if err := p.setKey(a, index, key); err != nil {
+		return nil, err
 	}
-	return p.setValue(a, index, value)
+	return p, p.setValue(a, index, value)
 }
 
-func (p *btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex, index int, key, value []byte) (err error) {
+func (p btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex, index int, key, value []byte) (btreeDataPage, error) {
 	right, rh, err := newBTreeDataPageAlloc(a)
 	defer bufs.GCache.Put(right)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if next := p.next(); next != 0 {
@@ -1224,87 +1212,87 @@ func (p *btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex,
 		nx := bufs.GCache.Get(maxBuf)
 		defer bufs.GCache.Put(nx)
 		if nx, err = a.Get(nx, nxh); err != nil {
-			return err
+			return nil, err
 		}
 
 		btreeDataPage(nx).setPrev(rh)
 		if err = a.Realloc(nxh, nx); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	p.setNext(rh)
 	right.setPrev(ph)
-	right.setLen(kData)
-	right.copy(*p, 0, kData, kData)
-	p.setLen(kData)
+	right = right.setLen(kData)
+	right.copy(p, 0, kData, kData)
+	p = p.setLen(kData)
 
 	if parentIndex >= 0 {
 		var pp btreeIndexPage = bufs.GCache.Get(maxBuf)
 		defer bufs.GCache.Put(pp)
 		if pp, err = a.Get(pp, parent); err != nil {
-			return
+			return nil, err
 		}
 
-		pp.insert3(parentIndex, rh, rh)
+		pp = pp.insert3(parentIndex, rh, rh)
 		if err = a.Realloc(parent, pp); err != nil {
-			return
+			return nil, err
 		}
 
 	} else {
 		nr := newBTreeIndexPage(ph)
-		nr.insert3(0, rh, rh)
+		nr = nr.insert3(0, rh, rh)
 		nrh, err := a.Alloc(nr)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err = a.Realloc(root, h2b(make([]byte, 7), nrh)); err != nil {
-			return err
+			return nil, err
 		}
 
 	}
 	if index > kData {
-		if err = right.insertItem(a, index-kData, key, value); err != nil {
-			return err
+		if right, err = right.insertItem(a, index-kData, key, value); err != nil {
+			return nil, err
 		}
 	} else {
-		if err = p.insertItem(a, index, key, value); err != nil {
-			return err
+		if p, err = p.insertItem(a, index, key, value); err != nil {
+			return nil, err
 		}
 	}
-	if err = a.Realloc(ph, *p); err != nil {
-		return
+	if err = a.Realloc(ph, p); err != nil {
+		return nil, err
 	}
 
-	return a.Realloc(rh, right)
+	return p, a.Realloc(rh, right)
 }
 
-func (p *btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentIndex, index int, key, value []byte) (err error) {
-	var leftH, rightH int64
-	if leftH, rightH, err = checkSiblings(a, parent, parentIndex); err != nil {
-		return
+func (p btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentIndex, index int, key, value []byte) (btreeDataPage, error) {
+	leftH, rightH, err := checkSiblings(a, parent, parentIndex)
+	if err != nil {
+		return nil, err
 	}
 
 	if leftH != 0 {
 		left := btreeDataPage(bufs.GCache.Get(maxBuf))
 		defer bufs.GCache.Put(left)
 		if left, err = a.Get(left, leftH); err != nil {
-			return
+			return nil, err
 		}
 
 		if left.len() < 2*kData {
 
-			p.moveLeft(&left, 1)
+			p, left = p.moveLeft(left, 1)
 			if err = a.Realloc(leftH, left); err != nil {
-				return
+				return nil, err
 			}
 
-			if err = p.insertItem(a, index-1, key, value); err != nil {
-				return
+			if p, err = p.insertItem(a, index-1, key, value); err != nil {
+				return nil, err
 			}
 
-			return a.Realloc(ph, *p)
+			return p, a.Realloc(ph, p)
 		}
 	}
 
@@ -1312,27 +1300,27 @@ func (p *btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentInd
 		right := btreeDataPage(bufs.GCache.Get(maxBuf))
 		defer bufs.GCache.Put(right)
 		if right, err = a.Get(right, rightH); err != nil {
-			return
+			return nil, err
 		}
 
 		if right.len() < 2*kData {
 			if index < 2*kData {
-				p.moveRight(&right, 1)
+				p, right = p.moveRight(right, 1)
 				if err = a.Realloc(rightH, right); err != nil {
-					return
+					return nil, err
 				}
 
-				if err = p.insertItem(a, index, key, value); err != nil {
-					return
+				if p, err = p.insertItem(a, index, key, value); err != nil {
+					return nil, err
 				}
 
-				return a.Realloc(ph, *p)
+				return p, a.Realloc(ph, p)
 			} else {
-				if err = right.insertItem(a, 0, key, value); err != nil {
-					return
+				if right, err = right.insertItem(a, 0, key, value); err != nil {
+					return nil, err
 				}
 
-				return a.Realloc(rightH, right)
+				return p, a.Realloc(rightH, right)
 			}
 		}
 	}
@@ -1399,29 +1387,29 @@ func (p btreePage) find(a btreeStore, c func(a, b []byte) int, key []byte) (inde
 }
 
 // p is dirty after extract!
-func (p *btreeDataPage) extract(a btreeStore, index int) (value []byte, err error) {
-	if value, err = p.valueCopy(a, index); err != nil {
-		return
+func (p btreeDataPage) extract(a btreeStore, index int) (btreeDataPage, []byte, error) {
+	value, err := p.valueCopy(a, index)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	if _, h := p.keyField(index); h != 0 {
 		if err = a.Free(h); err != nil {
-			return
+			return nil, nil, err
 		}
 	}
 
 	if _, h := p.valueField(index); h != 0 {
 		if err = a.Free(h); err != nil {
-			return
+			return nil, nil, err
 		}
 	}
 
 	n := p.len() - 1
 	if index < n {
-		p.copy(*p, index, index+1, n-index)
+		p.copy(p, index, index+1, n-index)
 	}
-	p.setLen(n)
-	return
+	return p.setLen(n), value, nil
 }
 
 func checkSiblings(a btreeStore, parent int64, parentIndex int) (left, right int64, err error) {
@@ -1457,7 +1445,7 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 		}
 
 		if btreeDataPage(left).len()+p.len() >= 2*kData {
-			(*btreeDataPage)(&left).moveRight(&p, 1)
+			left, p = btreeDataPage(left).moveRight(p, 1)
 			if err = a.Realloc(lh, left); err != nil {
 				return err
 			}
@@ -1474,7 +1462,7 @@ func (p btreeDataPage) underflow(a btreeStore, root, iroot, parent, ph int64, pa
 		}
 
 		if p.len()+btreeDataPage(right).len() > 2*kData {
-			(*btreeDataPage)(&right).moveLeft(&p, 1)
+			right, p = btreeDataPage(right).moveLeft(p, 1)
 			if err = a.Realloc(rh, right); err != nil {
 				return err
 			}
@@ -1508,7 +1496,7 @@ func (p btreeDataPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, p
 		return err
 	}
 
-	(*btreeDataPage)(&right).moveLeft(&p, btreeDataPage(right).len())
+	right, p = btreeDataPage(right).moveLeft(p, btreeDataPage(right).len())
 	nxh := btreeDataPage(right).next()
 	if nxh != 0 {
 		nx := bufs.GCache.Get(maxBuf)
@@ -1534,7 +1522,7 @@ func (p btreeDataPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, p
 	}
 
 	if btreeIndexPage(pp).len() > 1 {
-		(*btreeIndexPage)(&pp).extract(parentIndex)
+		pp = btreeIndexPage(pp).extract(parentIndex)
 		btreeIndexPage(pp).setChild(parentIndex, ph)
 		if err = a.Realloc(parent, pp); err != nil {
 			return err
@@ -1657,7 +1645,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 			return
 		}
 
-		if err = p.insertItem(a, 0, key, value); err != nil {
+		if p, err = p.insertItem(a, 0, key, value); err != nil {
 			return
 		}
 
@@ -1729,7 +1717,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 			return
 		case btreePage(p).isIndex():
 			if btreePage(p).len() > 2*kIndex {
-				if err = (*btreeIndexPage)(&p).split(a, root, &ph, parent, parentIndex, &index); err != nil {
+				if p, err = btreeIndexPage(p).split(a, root, &ph, parent, parentIndex, &index); err != nil {
 					return
 				}
 			}
@@ -1742,7 +1730,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 			}
 
 			if btreePage(p).len() < 2*kData { // page is not full
-				if err = (*btreeDataPage)(&p).insertItem(a, index, key, value); err != nil {
+				if p, err = btreeDataPage(p).insertItem(a, index, key, value); err != nil {
 					return
 				}
 
@@ -1751,7 +1739,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 			}
 
 			// page is full
-			err = (*btreeDataPage)(&p).overflow(a, int64(root), ph, parent, parentIndex, index, key, value)
+			p, err = btreeDataPage(p).overflow(a, int64(root), ph, parent, parentIndex, index, key, value)
 			return
 		}
 	}
@@ -1819,7 +1807,7 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 	parentIndex := -1
 	var parent int64
 
-	p := btreePage(bufs.GCache.Get(maxBuf))
+	p := bufs.GCache.Get(maxBuf)
 	defer bufs.GCache.Put(p)
 
 	for {
@@ -1829,12 +1817,12 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 
 		var index int
 		var ok bool
-		if index, ok, err = p.find(a, c, key); err != nil {
+		if index, ok, err = btreePage(p).find(a, c, key); err != nil {
 			return
 		}
 
 		if ok {
-			if p.isIndex() {
+			if btreePage(p).isIndex() {
 				dph := btreeIndexPage(p).dataPage(index)
 				dp, err := a.Get(dst, dph)
 				if err != nil {
@@ -1842,7 +1830,7 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 				}
 
 				if btreeDataPage(dp).len() > kData {
-					if value, err = (*btreeDataPage)(&dp).extract(a, 0); err != nil {
+					if dp, value, err = btreeDataPage(dp).extract(a, 0); err != nil {
 						return nil, err
 					}
 
@@ -1850,7 +1838,8 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 				}
 
 				if btreeIndexPage(p).len() < kIndex && ph != iroot {
-					if err = (*btreeIndexPage)(&p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
+					var err error
+					if p, err = btreeIndexPage(p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
 						return nil, err
 					}
 				}
@@ -1860,8 +1849,8 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 				continue
 			}
 
-			value, err = (*btreeDataPage)(&p).extract(a, index)
-			if p.len() >= kData {
+			p, value, err = btreeDataPage(p).extract(a, index)
+			if btreePage(p).len() >= kData {
 				err = a.Realloc(ph, p)
 				return
 			}
@@ -1871,7 +1860,7 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 				return
 			}
 
-			if p.len() == 0 {
+			if btreePage(p).len() == 0 {
 				if err = a.Free(ph); err != nil {
 					return
 				}
@@ -1883,12 +1872,12 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 			return
 		}
 
-		if !p.isIndex() {
+		if !btreePage(p).isIndex() {
 			return
 		}
 
-		if p.len() < kIndex && ph != iroot {
-			if err = (*btreeIndexPage)(&p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
+		if btreePage(p).len() < kIndex && ph != iroot {
+			if p, err = btreeIndexPage(p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
 				return nil, err
 			}
 		}
@@ -1914,14 +1903,16 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 	ph := iroot
 	parentIndex := -1
 	var parent int64
+	p := bufs.GCache.Get(maxBuf)
+	defer bufs.GCache.Put(p)
+
 	for {
-		var p btreePage
 		if p, err = a.Get(p, ph); err != nil {
 			return false, err
 		}
 
-		index := p.len() / 2
-		if p.isIndex() {
+		index := btreePage(p).len() / 2
+		if btreePage(p).isIndex() {
 			dph := btreeIndexPage(p).dataPage(index)
 			dp := bufs.GCache.Get(maxBuf)
 			defer bufs.GCache.Put(dp)
@@ -1930,7 +1921,7 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 			}
 
 			if btreeDataPage(dp).len() > kData {
-				if _, err = (*btreeDataPage)(&dp).extract(a, 0); err != nil {
+				if dp, _, err = btreeDataPage(dp).extract(a, 0); err != nil {
 					return false, err
 				}
 
@@ -1938,7 +1929,7 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 			}
 
 			if btreeIndexPage(p).len() < kIndex && ph != iroot {
-				if err = (*btreeIndexPage)(&p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
+				if p, err = btreeIndexPage(p).underflow(a, int64(root), iroot, parent, &ph, parentIndex, &index); err != nil {
 					return false, err
 				}
 			}
@@ -1948,8 +1939,8 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 			continue
 		}
 
-		_, err = (*btreeDataPage)(&p).extract(a, index)
-		if p.len() >= kData {
+		p, _, err = btreeDataPage(p).extract(a, index)
+		if btreePage(p).len() >= kData {
 			err = a.Realloc(ph, p)
 			return false, err
 		}
@@ -1959,7 +1950,7 @@ func (root btree) deleteAny(a btreeStore) (bool, error) {
 			return false, err
 		}
 
-		if p.len() == 0 {
+		if btreePage(p).len() == 0 {
 			if err = a.Free(ph); err != nil {
 				return true, err
 			}
