@@ -8,8 +8,10 @@ import (
 	"encoding/binary"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"testing"
 
+	"github.com/cznic/bufs"
 	"github.com/cznic/exp/lldb"
 	"github.com/cznic/zappy"
 )
@@ -51,7 +53,6 @@ func TestProf(t *testing.T) {
 	}
 
 	a.Compress = true
-
 	b, _, err := lldb.CreateBTree(a, nil)
 	if err != nil {
 		t.Error(err)
@@ -66,6 +67,8 @@ func TestProf(t *testing.T) {
 			return
 		}
 	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
 	bufsU, bufsT, bytesU, bytesT, h, m := a.CacheStats()
 	const p = 100.0
 	t.Logf(
@@ -75,6 +78,9 @@ func TestProf(t *testing.T) {
 		h, p*float64(h)/float64(h+m),
 		m, p*float64(m)/float64(h+m),
 	)
+	nn, bts := bufs.GCache.Stats()
+	t.Logf("bufs.GCache.Stats() {%d, %d}", nn, bts)
+	t.Logf("%+v\n", ms)
 }
 
 func BenchmarkMem(b *testing.B) {

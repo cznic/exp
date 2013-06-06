@@ -624,7 +624,7 @@ func (a *Allocator) unlink(h, atoms, p, n int64) (err error) {
 	return a.prev(n, p)
 }
 
-//TODO remove
+//TODO remove ?
 // Return len(slice) == n, reuse src if possible.
 func need(n int, src []byte) []byte {
 	if cap(src) < n {
@@ -932,14 +932,17 @@ func (a *Allocator) writeAt(b []byte, off int64) (err error) {
 }
 
 func (a *Allocator) write(off int64, b ...[]byte) (err error) {
+	rq := 0
 	for _, part := range b {
-		if err = a.writeAt(part, off); err != nil {
-			return
-		}
-
-		off += int64(len(part))
+		rq += len(part)
 	}
-	return
+	buf := bufs.GCache.Get(rq)
+	defer bufs.GCache.Put(buf)
+	buf = buf[:0]
+	for _, part := range b {
+		buf = append(buf, part...)
+	}
+	return a.writeAt(buf, off)
 }
 
 func (a *Allocator) read(b []byte, off int64) (err error) {
@@ -996,14 +999,15 @@ func (a *Allocator) nfo(h int64) (tag byte, s, p, n int64, err error) {
 	return
 }
 
-// leftNfo returns nfo for h's left neighbour if h > 1 and the left neighbour
-// is a free block. Otherwise all zero values are returned instead.
+// leftNfo returns nfo for h's left neighbor if h > 1 and the left neighbor is
+// a free block. Otherwise all zero values are returned instead.
 func (a *Allocator) leftNfo(h int64) (tag byte, s, p, n int64, err error) {
 	if !(h > 1) {
 		return
 	}
 
-	var buf [8]byte
+	buf := bufs.GCache.Get(8)
+	defer bufs.GCache.Put(buf)
 	off := h2off(h)
 	if err = a.read(buf[:], off-8); err != nil {
 		return
@@ -1020,7 +1024,8 @@ func (a *Allocator) leftNfo(h int64) (tag byte, s, p, n int64, err error) {
 
 // Set h.prev = p
 func (a *Allocator) prev(h, p int64) (err error) {
-	var b [7]byte
+	b := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(b)
 	off := h2off(h)
 	if err = a.read(b[:1], off); err != nil {
 		return

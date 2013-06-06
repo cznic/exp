@@ -129,6 +129,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"time"
 
@@ -194,7 +195,6 @@ func fillseq() {
 	}
 
 	a.Compress = true
-
 	b, _, err := lldb.CreateBTree(a, nil)
 	if err != nil {
 		log.Println(err)
@@ -206,7 +206,7 @@ func fillseq() {
 		binary.BigEndian.PutUint32(keys[i][:], uint32(i))
 	}
 
-	runtime.GC()
+	debug.FreeOSMemory()
 	t0 := time.Now()
 	for _, key := range keys {
 		if err = b.Set(key[:], value100); err != nil {
@@ -218,6 +218,8 @@ func fillseq() {
 		log.Println(err)
 		return
 	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
 
 	d := time.Since(t0)
 	fi, err := f.Stat()
@@ -231,4 +233,5 @@ func fillseq() {
 	fmt.Printf("fillseq      :%19v/op;%7.1f MB/s (%g secs, %d bytes)\n", d/N, float64(sz)/secs/1e6, secs, sz)
 	nn, bytes := bufs.GCache.Stats()
 	fmt.Printf("%d %d\n", nn, bytes)
+	fmt.Printf("%+v\n", ms)
 }

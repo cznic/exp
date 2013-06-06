@@ -1674,7 +1674,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 	var parent int64
 	ph := iroot
 
-	p := btreePage(bufs.GCache.Get(maxBuf))
+	p := bufs.GCache.Get(maxBuf)
 	defer bufs.GCache.Put(p)
 
 	for {
@@ -1685,13 +1685,13 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 		var index int
 		var ok bool
 
-		if index, ok, err = p.find(a, c, key); err != nil {
+		if index, ok, err = btreePage(p).find(a, c, key); err != nil {
 			return
 		}
 
 		switch {
 		case ok: // Key found
-			if p.isIndex() {
+			if btreePage(p).isIndex() {
 				ph = btreeIndexPage(p).dataPage(index)
 				if p, err = a.Get(p, ph); err != nil {
 					return
@@ -1727,8 +1727,8 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 
 			err = a.Realloc(ph, p)
 			return
-		case p.isIndex():
-			if p.len() > 2*kIndex {
+		case btreePage(p).isIndex():
+			if btreePage(p).len() > 2*kIndex {
 				if err = (*btreeIndexPage)(&p).split(a, root, &ph, parent, parentIndex, &index); err != nil {
 					return
 				}
@@ -1741,7 +1741,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 				return
 			}
 
-			if p.len() < 2*kData { // page is not full
+			if btreePage(p).len() < 2*kData { // page is not full
 				if err = (*btreeDataPage)(&p).insertItem(a, index, key, value); err != nil {
 					return
 				}
@@ -1818,9 +1818,12 @@ func (root btree) extract(a btreeStore, dst []byte, c func(a, b []byte) int, key
 	ph := iroot
 	parentIndex := -1
 	var parent int64
+
+	p := btreePage(bufs.GCache.Get(maxBuf))
+	defer bufs.GCache.Put(p)
+
 	for {
-		var p btreePage
-		if p, err = a.Get(p, ph); err != nil {
+		if p, err = a.Get(p[:cap(p)], ph); err != nil {
 			return
 		}
 
