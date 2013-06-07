@@ -412,17 +412,69 @@ func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 	var c allocatorBlock
 	buf := bufs.GCache.Get(zappy.MaxEncodedLen(len(b)))
 	defer bufs.GCache.Put(buf)
-	if buf, _, err = a.makeUsedBlock(buf, &c, b); err != nil {
+	buf, _, c, err = a.makeUsedBlock(buf, b)
+	defer func() {
+		bufs.GCache.Put(c.head)
+		bufs.GCache.Put(c.tail)
+	}()
+	if err != nil {
 		return
 	}
 
-	if handle, err = a.alloc(buf, &c); err == nil {
+	if handle, err = a.alloc(buf, c); err == nil {
 		a.cadd(b, handle)
 	}
 	return
 }
 
-func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
+//TODO- func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
+// 	rqAtoms := n2atoms(len(b))
+// 	if h = a.flt.find(rqAtoms); h == 0 { // must grow
+// 		var sz int64
+// 		if sz, err = a.f.Size(); err != nil {
+// 			return
+// 		}
+//
+// 		h = off2h(sz)
+// 		err = c.writeUsedBlock(a, h, b)
+// 		return
+// 	}
+//
+// 	// Handle is the first item of a free blocks list.
+// 	tag, s, prev, next, err := a.nfo(h)
+// 	if err != nil {
+// 		return
+// 	}
+//
+// 	if tag != tagFreeShort && tag != tagFreeLong {
+// 		err = &ErrILSEQ{Type: ErrExpFreeTag, Off: h2off(h), Arg: int64(tag)}
+// 		return
+// 	}
+//
+// 	if prev != 0 {
+// 		err = &ErrILSEQ{Type: ErrHead, Off: h2off(h), Arg: prev}
+// 		return
+// 	}
+//
+// 	if s < int64(rqAtoms) {
+// 		err = &ErrILSEQ{Type: ErrSmall, Arg: int64(rqAtoms), Arg2: s, Off: h2off(h)}
+// 		return
+// 	}
+//
+// 	if err = a.unlink(h, s, prev, next); err != nil {
+// 		return
+// 	}
+//
+// 	if s > int64(rqAtoms) {
+// 		freeH := h + int64(rqAtoms)
+// 		freeAtoms := s - int64(rqAtoms)
+// 		if err = a.link(freeH, freeAtoms); err != nil {
+// 			return
+// 		}
+// 	}
+// 	return h, c.writeUsedBlock(a, h, b)
+// }
+func (a *Allocator) alloc(b []byte, c allocatorBlock) (h int64, err error) {
 	rqAtoms := n2atoms(len(b))
 	if h = a.flt.find(rqAtoms); h == 0 { // must grow
 		var sz int64
@@ -431,7 +483,7 @@ func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 		}
 
 		h = off2h(sz)
-		err = a.writeUsedBlock(h, c, b)
+		err = c.writeUsedBlock(a, h, b)
 		return
 	}
 
@@ -467,7 +519,7 @@ func (a *Allocator) alloc(b []byte, c *allocatorBlock) (h int64, err error) {
 			return
 		}
 	}
-	return h, a.writeUsedBlock(h, c, b)
+	return h, c.writeUsedBlock(a, h, b)
 }
 
 // Free deallocates the block referred to by handle or returns an error, if
@@ -802,15 +854,21 @@ func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 
 func (a *Allocator) realloc(handle int64, b []byte) (err error) {
 	var (
-		c                allocatorBlock
-		dlen, needAtoms0 int
+		c          allocatorBlock
+		dlen       int
+		needAtoms0 int
 	)
 
 	b8 := bufs.GCache.Get(8)
 	defer bufs.GCache.Put(b8)
 	dst := bufs.GCache.Get(zappy.MaxEncodedLen(len(b)))
-	defer bufs.GCache.Put(dst)
-	if b, needAtoms0, err = a.makeUsedBlock(dst, &c, b); err != nil {
+	b, needAtoms0, c, err = a.makeUsedBlock(dst, b)
+	defer func() {
+		bufs.GCache.Put(dst)
+		bufs.GCache.Put(c.head)
+		bufs.GCache.Put(c.tail)
+	}()
+	if err != nil {
 		return
 	}
 
@@ -840,7 +898,7 @@ retry:
 	switch {
 	case needAtoms < atoms:
 		// in place shrink
-		if err = a.writeUsedBlock(handle, &c, b); err != nil {
+		if err = c.writeUsedBlock(a, handle, b); err != nil {
 			return
 		}
 
@@ -857,7 +915,7 @@ retry:
 		return a.free2(fh, fa)
 	case needAtoms == atoms:
 		// in place replace
-		return a.writeUsedBlock(handle, &c, b)
+		return c.writeUsedBlock(a, handle, b)
 	}
 
 	// case needAtoms > atoms:
@@ -871,7 +929,7 @@ retry:
 	switch {
 	case off+atoms*16 == sz:
 		// relocating tail block - shortcut
-		return a.writeUsedBlock(handle, &c, b)
+		return c.writeUsedBlock(a, handle, b)
 	default:
 		if off+atoms*16 < sz {
 			// handle is not a tail block, check right neighbour
@@ -904,7 +962,7 @@ retry:
 	}
 
 	var newH int64
-	if newH, err = a.alloc(b, &c); err != nil {
+	if newH, err = a.alloc(b, c); err != nil {
 		return err
 	}
 
@@ -916,7 +974,7 @@ retry:
 		return
 	}
 
-	return a.writeUsedBlock(newH, &c, b)
+	return c.writeUsedBlock(a, newH, b)
 }
 
 func (a *Allocator) writeAt(b []byte, off int64) (err error) {
@@ -1101,23 +1159,62 @@ func (a *Allocator) makeFree(h, atoms, prev, next int64) (err error) {
 	return
 }
 
+//TODO- type allocatorBlock struct {
+// 	headSize int
+// 	head     [3]byte
+// 	padding  [15]byte
+// 	tail     [8]byte
+// 	tailSize int
+// }
 type allocatorBlock struct {
-	headSize int
-	head     [3]byte
-	padding  [15]byte
-	tail     [8]byte
-	tailSize int
+	head []byte
+	tail []byte
 }
 
-func (a *Allocator) makeUsedBlock(dst []byte, c *allocatorBlock, b []byte) (w []byte, rqAtoms int, err error) {
-	c.headSize = 1
+func (c *allocatorBlock) writeUsedBlock(a *Allocator, h int64, b []byte) (err error) {
+	return a.write(h2off(h), c.head, b, zeros[:n2padding(len(b))], c.tail)
+}
+
+//TODO- func (a *Allocator) makeUsedBlock(dst []byte, c *allocatorBlock, b []byte) (w []byte, rqAtoms int, err error) {
+// 	c.headSize = 1
+// 	c.tail[0] = tagNotCompressed
+// 	c.tailSize = 1
+// 	w = b
+//
+// 	var n int
+// 	if n = len(b); n > maxRq {
+// 		return nil, 0, &ErrINVAL{"Allocator.makeUsedBlock: content size out of limits", n}
+// 	}
+//
+// 	rqAtoms = n2atoms(n)
+// 	if a.Compress && n > 14 { // attempt compression
+// 		if dst, err = zappy.Encode(dst, b); err != nil {
+// 			return
+// 		}
+//
+// 		n2 := len(dst)
+// 		if rqAtoms2 := n2atoms(n2); rqAtoms2 < rqAtoms { // compression saved at least a single atom
+// 			w, n, rqAtoms, c.tail[0] = dst, n2, rqAtoms2, tagCompressed
+// 		}
+// 	}
+// 	switch n <= maxShort {
+// 	case true:
+// 		c.head[0] = byte(n)
+// 	case false:
+// 		m := n2m(n)
+// 		c.head[0], c.head[1], c.head[2] = tagUsedLong, byte(m>>8), byte(m)
+// 		c.headSize = 3
+// 	}
+// 	return
+// }
+func (a *Allocator) makeUsedBlock(dst []byte, b []byte) (w []byte, rqAtoms int, c allocatorBlock, err error) {
+	c.tail = bufs.GCache.Get(1)
 	c.tail[0] = tagNotCompressed
-	c.tailSize = 1
 	w = b
 
 	var n int
 	if n = len(b); n > maxRq {
-		return nil, 0, &ErrINVAL{"Allocator.makeUsedBlock: content size out of limits", n}
+		return nil, 0, c, &ErrINVAL{"Allocator.makeUsedBlock: content size out of limits", n}
 	}
 
 	rqAtoms = n2atoms(n)
@@ -1133,18 +1230,19 @@ func (a *Allocator) makeUsedBlock(dst []byte, c *allocatorBlock, b []byte) (w []
 	}
 	switch n <= maxShort {
 	case true:
+		c.head = bufs.GCache.Get(1)
 		c.head[0] = byte(n)
 	case false:
+		c.head = bufs.GCache.Get(3)
 		m := n2m(n)
 		c.head[0], c.head[1], c.head[2] = tagUsedLong, byte(m>>8), byte(m)
-		c.headSize = 3
 	}
 	return
 }
 
-func (a *Allocator) writeUsedBlock(h int64, c *allocatorBlock, b []byte) (err error) {
-	return a.write(h2off(h), c.head[:c.headSize], b, c.padding[:n2padding(len(b))], c.tail[:c.tailSize])
-}
+//TODO- func (a *Allocator) writeUsedBlock(h int64, c *allocatorBlock, b []byte) (err error) {
+// 	return a.write(h2off(h), c.head[:c.headSize], b, c.padding[:n2padding(len(b))], c.tail[:c.tailSize])
+// }
 
 func (a *Allocator) verifyUnused(h, totalAtoms int64, tag byte, log func(error) bool, fast bool) (atoms, prev, next int64, err error) {
 	switch tag {

@@ -740,14 +740,13 @@ func TestAllocatorMakeUsedBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var c allocatorBlock
 	dst := bufs.GCache.Get(zappy.MaxEncodedLen(maxRq + 1))
 	defer bufs.GCache.Put(dst)
-	if _, _, err := a.makeUsedBlock(dst, &c, make([]byte, maxRq)); err != nil {
+	if _, _, _, err := a.makeUsedBlock(dst, make([]byte, maxRq)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := a.makeUsedBlock(dst, &c, make([]byte, maxRq+1)); err == nil {
+	if _, _, _, err := a.makeUsedBlock(dst, make([]byte, maxRq+1)); err == nil {
 		t.Fatal("unexpected success")
 	}
 }

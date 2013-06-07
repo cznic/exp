@@ -571,6 +571,10 @@ func init() {
 	if kKV < 8 || kKV > 23 {
 		panic(fmt.Errorf("kKV %d: out of limits", kKV))
 	}
+
+	if n := len(zeros); n < 15 {
+		panic(fmt.Errorf("not enough zeros: %s", n))
+	}
 }
 
 type memBTreeStore struct {
