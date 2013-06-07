@@ -241,7 +241,6 @@ func (t *BTree) Get(dst, key []byte) (value []byte, err error) {
 		return
 	}
 
-	t.serial++ //TODO make .get R/O
 	buf := bufs.GCache.Get(maxBuf)
 	defer bufs.GCache.Put(buf)
 	if buf, err = t.root.get(t.store, buf, t.collate, key); buf == nil || err != nil {
@@ -668,7 +667,7 @@ DataPage[X] == 8+14*X
 type btreeIndexPage []byte
 
 func newBTreeIndexPage(leftmostChild int64) (p btreeIndexPage) {
-	p = make([]byte, 8, 1+(kIndex+1)*2*7)
+	p = bufs.GCache.Get(1 + (kIndex+1)*2*7)[:8]
 	p[0] = tagBTreeIndexPage
 	h2b(p[1:], leftmostChild)
 	return
@@ -748,6 +747,7 @@ func (q btreeIndexPage) setLen(n int) btreeIndexPage {
 
 func (p btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64, parentIndex int, index *int) (btreeIndexPage, error) {
 	right := newBTreeIndexPage(0)
+	defer bufs.GCache.Put(right)
 	right = right.setLen(kIndex)
 	copy(right[1:1+(2*kIndex+1)*7], p[1+14*(kIndex+1):])
 	p = p.setLen(kIndex)
@@ -773,6 +773,7 @@ func (p btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64,
 
 	} else {
 		nr := newBTreeIndexPage(*ph)
+		defer bufs.GCache.Put(nr)
 		nr = nr.insert3(0, p.dataPage(kIndex), rh)
 		nrh, err := a.Alloc(nr)
 		if err != nil {
@@ -934,7 +935,8 @@ func (p btreeIndexPage) concat(a btreeStore, root, iroot, parent, ph, rh int64, 
 		return nil, err
 	}
 
-	var b7 [7]byte //TODO GCache
+	b7 := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(b7)
 	return p, a.Realloc(root, h2b(b7[:7], ph))
 }
 
@@ -1066,7 +1068,6 @@ func (q btreeDataPage) insert(index int) btreeDataPage {
 	panic("internal error")
 }
 
-//TODO pass dst: Later, not a public API
 func (p btreeDataPage) contentField(off int) (b []byte, h int64) {
 	p = p[off:]
 	switch n := int(p[0]); {
@@ -1079,7 +1080,6 @@ func (p btreeDataPage) contentField(off int) (b []byte, h int64) {
 	return
 }
 
-//TODO pass dst: Later, not a public API
 func (p btreeDataPage) content(a btreeStore, off int) (b []byte, err error) {
 	b, h := p.contentField(off)
 	if h == 0 {
@@ -1245,6 +1245,7 @@ func (p btreeDataPage) split(a btreeStore, root, ph, parent int64, parentIndex, 
 
 	} else {
 		nr := newBTreeIndexPage(ph)
+		defer bufs.GCache.Put(nr)
 		nr = nr.insert3(0, rh, rh)
 		nrh, err := a.Alloc(nr)
 		if err != nil {
@@ -1749,6 +1750,7 @@ func (root btree) put2(dst []byte, a btreeStore, c func(a, b []byte) int, key []
 	}
 }
 
+//TODO actually use 'dst' to return 'value'
 func (root btree) get(a btreeStore, dst []byte, c func(a, b []byte) int, key []byte) (b []byte, err error) {
 	var r []byte
 	if r, err = a.Get(dst, int64(root)); err != nil {

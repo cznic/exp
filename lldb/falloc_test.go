@@ -886,7 +886,7 @@ func TestAllocatorRnd(t *testing.T) {
 
 			// E) Resize every block remaining
 			for _, v := range stableRef(ref) {
-				h, wb := v.h, v.b
+				h, wb := v.h, append([]byte(nil), v.b...)
 				len0 := len(wb)
 				switch rng.Int() & 1 {
 				case 0:

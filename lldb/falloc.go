@@ -1042,7 +1042,8 @@ func (a *Allocator) prev(h, p int64) (err error) {
 
 // Set h.next = n
 func (a *Allocator) next(h, n int64) (err error) {
-	var b [7]byte
+	b := bufs.GCache.Get(7)
+	defer bufs.GCache.Put(b)
 	off := h2off(h)
 	if err = a.read(b[:1], off); err != nil {
 		return
