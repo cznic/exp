@@ -369,8 +369,9 @@ func benchmarkBTreePut(b *testing.B, v []byte) {
 	}
 }
 
-func BenchmarkBTreePut0(b *testing.B) {
-	benchmarkBTreePut(b, nil)
+func BenchmarkBTreePut1(b *testing.B) {
+	v := make([]byte, 1)
+	benchmarkBTreePut(b, v)
 }
 
 func BenchmarkBTreePut8(b *testing.B) {
@@ -412,8 +413,9 @@ func benchmarkBTreeGet(b *testing.B, v []byte) {
 	}
 }
 
-func BenchmarkBTreeGet0(b *testing.B) {
-	benchmarkBTreeGet(b, nil)
+func BenchmarkBTreeGet1(b *testing.B) {
+	v := make([]byte, 1)
+	benchmarkBTreeGet(b, v)
 }
 
 func BenchmarkBTreeGet8(b *testing.B) {
