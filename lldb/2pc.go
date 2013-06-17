@@ -153,13 +153,13 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 
 			// Phase 1 commit complete
 
-			enum, err := r.data.SeekFirst()
+			enum, err := r.data.seekFirst()
 			if err != nil {
 				return
 			}
 
 			for {
-				k, v, err := enum.Current()
+				k, v, err := enum.current()
 				if err != nil {
 					if err == io.EOF {
 						break
@@ -172,7 +172,7 @@ func NewACIDFiler(db Filer, wal *os.File) (r *ACIDFiler0, err error) {
 					return err
 				}
 
-				if err = enum.Next(); err != nil {
+				if err = enum.next(); err != nil {
 					if err == io.EOF {
 						break
 					}
@@ -291,13 +291,13 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 			}
 
 			sz := items[1].(int64)
-			enum, err := tr.SeekFirst()
+			enum, err := tr.seekFirst()
 			if err != nil {
 				return err
 			}
 
 			for {
-				k, v, err := enum.Current()
+				k, v, err := enum.current()
 				if err != nil {
 					if err == io.EOF {
 						break
@@ -310,7 +310,7 @@ func (a *ACIDFiler0) recoverDb(db Filer) (err error) {
 					return err
 				}
 
-				if err = enum.Next(); err != nil {
+				if err = enum.next(); err != nil {
 					if err == io.EOF {
 						break
 					}

@@ -35,7 +35,7 @@ const (
 // delayed split/concatenation (discussed in e.g. [3]).
 //
 // Note: No BTree methods returns io.EOF for physical Filer reads/writes.  The
-// io.EOF is returned only by BTreeEnumerator methods to indicate "no more K-V
+// io.EOF is returned only by bTreeEnumerator methods to indicate "no more K-V
 // pair".
 //
 //  [1]: http://en.wikipedia.org/wiki/B+tree
@@ -138,13 +138,13 @@ func elem(v interface{}) string {
 // example a float value '17.' and an integer value '17' may both output as
 // '17'.
 func (t *BTree) Dump(w io.Writer) (err error) {
-	enum, err := t.SeekFirst()
+	enum, err := t.seekFirst()
 	if err != nil {
 		return
 	}
 
 	for {
-		bkey, bval, err := enum.Current()
+		bkey, bval, err := enum.current()
 		if err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func (t *BTree) Dump(w io.Writer) (err error) {
 			return err
 		}
 
-		err = enum.Next()
+		err = enum.next()
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -307,16 +307,30 @@ func (t *BTree) Put(dst, key []byte, upd func(key, old []byte) (new []byte, writ
 	return t.root.put2(dst, t.store, t.collate, key, upd)
 }
 
-// Seek returns an enumerator with "position" or an error of any. Normally the
+// Seek returns an Enumerator with "position" or an error of any. Normally the
 // position is on a KV pair such that key >= KV.key. Then hit is key == KV.key.
 // The position is possibly "after" the last KV pair, but that is not an error.
 func (t *BTree) Seek(key []byte) (enum *BTreeEnumerator, hit bool, err error) {
+	enum0, hit, err := t.seek(key)
+	if err != nil {
+		return
+	}
+
+	enum = &BTreeEnumerator{
+		enum:     enum0,
+		firstHit: hit,
+		key:      append([]byte(nil), key...),
+	}
+	return
+}
+
+func (t *BTree) seek(key []byte) (enum *bTreeEnumerator, hit bool, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
 		return
 	}
 
-	r := &BTreeEnumerator{t: t, collate: t.collate, serial: t.serial}
+	r := &bTreeEnumerator{t: t, collate: t.collate, serial: t.serial}
 	if r.p, r.index, hit, err = t.root.seek(t.store, r.collate, key); err != nil {
 		return
 	}
@@ -325,9 +339,28 @@ func (t *BTree) Seek(key []byte) (enum *BTreeEnumerator, hit bool, err error) {
 	return
 }
 
-// SeekFirst returns an enumerator positioned on the first KV pair in the tree,
+// seekFirst returns an enumerator positioned on the first KV pair in the tree,
 // if any.  For an empty tree, err == io.EOF is returend.
 func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) {
+	enum0, err := t.seekFirst()
+	if err != nil {
+		return
+	}
+
+	var key []byte
+	if key, _, err = enum0.current(); err != nil {
+		return
+	}
+
+	enum = &BTreeEnumerator{
+		enum:     enum0,
+		firstHit: true,
+		key:      append([]byte(nil), key...),
+	}
+	return
+}
+
+func (t *BTree) seekFirst() (enum *bTreeEnumerator, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
 		return
@@ -341,12 +374,31 @@ func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) {
 		return
 	}
 
-	return &BTreeEnumerator{t: t, collate: t.collate, p: p, index: 0, serial: t.serial}, nil
+	return &bTreeEnumerator{t: t, collate: t.collate, p: p, index: 0, serial: t.serial}, nil
 }
 
-// SeekLast returns an enumerator positioned on the last KV pair in the tree,
+// seekLast returns an enumerator positioned on the last KV pair in the tree,
 // if any.  For an empty tree, err == io.EOF is returend.
 func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) {
+	enum0, err := t.seekLast()
+	if err != nil {
+		return
+	}
+
+	var key []byte
+	if key, _, err = enum0.current(); err != nil {
+		return
+	}
+
+	enum = &BTreeEnumerator{
+		enum:     enum0,
+		firstHit: true,
+		key:      append([]byte(nil), key...),
+	}
+	return
+}
+
+func (t *BTree) seekLast() (enum *bTreeEnumerator, err error) {
 	if t == nil {
 		err = errors.New("BTree method invoked on nil receiver")
 		return
@@ -360,7 +412,7 @@ func (t *BTree) SeekLast() (enum *BTreeEnumerator, err error) {
 		return
 	}
 
-	return &BTreeEnumerator{t: t, collate: t.collate, p: p, index: p.len() - 1, serial: t.serial}, nil
+	return &bTreeEnumerator{t: t, collate: t.collate, p: p, index: p.len() - 1, serial: t.serial}, nil
 }
 
 // Set sets the value associated with key. Any previous value, if existed, is
@@ -378,13 +430,13 @@ func (t *BTree) Set(key, value []byte) (err error) {
 	return
 }
 
-// BTreeEnumerator is a closure of a BTree and a position. It is returned from
-// BTree.Seek.
+// bTreeEnumerator is a closure of a BTree and a position. It is returned from
+// BTree.seek.
 //
-// NOTE: BTreeEnumerator cannot be used after its BTree was mutated after the
-// BTreeEnumerator was acquired from any of the Seek, SeekFirst, SeekLast
+// NOTE: bTreeEnumerator cannot be used after its BTree was mutated after the
+// bTreeEnumerator was acquired from any of the seek, seekFirst, seekLast
 // methods.
-type BTreeEnumerator struct {
+type bTreeEnumerator struct {
 	t       *BTree
 	collate func(a, b []byte) int
 	p       btreeDataPage
@@ -398,14 +450,14 @@ type BTreeEnumerator struct {
 //
 // If the enumerator has been invalidated by updating the tree, ErrINVAL is
 // returned.
-func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
+func (e *bTreeEnumerator) current() (key, value []byte, err error) {
 	if e == nil {
-		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("bTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
 	if e.serial != e.t.serial {
-		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
+		err = &ErrINVAL{Src: "bTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -426,14 +478,14 @@ func (e *BTreeEnumerator) Current() (key, value []byte, err error) {
 //
 // If the enumerator has been invalidated by updating the tree, ErrINVAL is
 // returned.
-func (e *BTreeEnumerator) Next() (err error) {
+func (e *bTreeEnumerator) next() (err error) {
 	if e == nil {
-		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("bTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
 	if e.serial != e.t.serial {
-		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
+		err = &ErrINVAL{Src: "bTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -465,14 +517,14 @@ func (e *BTreeEnumerator) Next() (err error) {
 //
 // If the enumerator has been invalidated by updating the tree, ErrINVAL is
 // returned.
-func (e *BTreeEnumerator) Prev() (err error) {
+func (e *bTreeEnumerator) prev() (err error) {
 	if e == nil {
-		err = errors.New("BTreeEnumerator method invoked on nil receiver")
+		err = errors.New("bTreeEnumerator method invoked on nil receiver")
 		return
 	}
 
 	if e.serial != e.t.serial {
-		err = &ErrINVAL{Src: "BTreeEnumerator invalidated by updating the tree"}
+		err = &ErrINVAL{Src: "bTreeEnumerator invalidated by updating the tree"}
 		return
 	}
 
@@ -496,6 +548,97 @@ func (e *BTreeEnumerator) Prev() (err error) {
 		}
 		e.index = e.p.len() - 1
 	}
+	return
+}
+
+// BTreeEnumerator captures the state of enumerating a tree. It is returned
+// from the Seek* methods.  The enumerator is aware of any mutations made to
+// the tree in the process of enumerating it and automatically resumes the
+// enumeration.
+type BTreeEnumerator struct {
+	enum     *bTreeEnumerator
+	err      error
+	key      []byte
+	firstHit bool
+}
+
+// Next returns the currently enumerated KV pair, if it exists and moves to the
+// next KV in the key collation order. If there is no KV pair to return, err ==
+// io.EOF is returned.
+func (e *BTreeEnumerator) Next() (key, value []byte, err error) {
+	if err = e.err; err != nil {
+		return
+	}
+
+	canRetry := true
+retry:
+	if key, value, err = e.enum.current(); err != nil {
+		if _, ok := err.(*ErrINVAL); !ok || !canRetry {
+			e.err = err
+			return
+		}
+
+		canRetry = false
+		var hit bool
+		if e.enum, hit, err = e.enum.t.seek(e.key); err != nil {
+			e.err = err
+			return
+		}
+
+		if !e.firstHit && hit {
+			err = e.enum.next()
+			if err != nil {
+				e.err = err
+				return
+			}
+		}
+
+		goto retry
+	}
+
+	e.firstHit = false
+	e.key = append([]byte(nil), key...)
+	e.err = e.enum.next()
+	return
+}
+
+// Prev returns the currently enumerated KV pair, if it exists and moves to the
+// previous KV in the key collation order. If there is no KV pair to return,
+// err == io.EOF is returned.
+func (e *BTreeEnumerator) Prev() (key, value []byte, err error) {
+	if err = e.err; err != nil {
+		return
+	}
+
+	canRetry := true
+retry:
+	if key, value, err = e.enum.current(); err != nil {
+		if _, ok := err.(*ErrINVAL); !ok || !canRetry {
+			e.err = err
+			return
+		}
+
+		canRetry = false
+		var hit bool
+		if e.enum, hit, err = e.enum.t.seek(e.key); err != nil {
+			e.err = err
+			return
+		}
+
+		if !e.firstHit && hit {
+			err = e.enum.prev()
+			if err != nil {
+				e.err = err
+				return
+			}
+		}
+
+		goto retry
+	}
+
+	e.firstHit = false
+	e.key = append([]byte(nil), key...)
+	e.err = e.enum.prev()
 	return
 }
 

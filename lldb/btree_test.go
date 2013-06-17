@@ -433,7 +433,7 @@ func BenchmarkBTreeGet32(b *testing.B) {
 	benchmarkBTreeGet(b, v)
 }
 
-func TestBTreeSeek(t *testing.T) {
+func TestbTreeSeek(t *testing.T) {
 	N := int64(*testN)
 
 	tree := NewBTree(nil)
@@ -623,24 +623,24 @@ func dec8(b []byte) (int64, error) {
 	return b2h(b), nil
 }
 
-func TestBTreeNext(t *testing.T) {
+func TestbTreeNext(t *testing.T) {
 	N := int64(*testN)
 
 	tree := NewBTree(nil)
-	enum, _, err := tree.Seek(enc8(0))
+	enum, _, err := tree.seek(enc8(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err = enum.Current(); err != io.EOF {
+	if _, _, err = enum.current(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Next(); err != io.EOF {
+	if err = enum.next(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Prev(); err != io.EOF {
+	if err = enum.prev(); err != io.EOF {
 		t.Fatal(err)
 	}
 
@@ -651,7 +651,7 @@ func TestBTreeNext(t *testing.T) {
 
 	var eq bool
 
-	enum, eq, err = tree.Seek(enc8(0))
+	enum, eq, err = tree.seek(enc8(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,15 +661,15 @@ func TestBTreeNext(t *testing.T) {
 	}
 
 	// index: 0
-	if _, _, err = enum.Current(); err != nil {
+	if _, _, err = enum.current(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = enum.Next(); N > 1 && err != nil {
+	if err = enum.next(); N > 1 && err != nil {
 		t.Fatal(err)
 	}
 
-	enum, eq, err = tree.Seek(enc8(N * 10))
+	enum, eq, err = tree.seek(enc8(N * 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,15 +679,15 @@ func TestBTreeNext(t *testing.T) {
 	}
 
 	// index: N-1
-	if _, _, err = enum.Current(); err != nil {
+	if _, _, err = enum.current(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = enum.Next(); N > 1 && err != io.EOF {
+	if err = enum.next(); N > 1 && err != io.EOF {
 		t.Fatal(err)
 	}
 
-	enum, eq, err = tree.Seek(enc8(N*10 + 1))
+	enum, eq, err = tree.seek(enc8(N*10 + 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,22 +697,22 @@ func TestBTreeNext(t *testing.T) {
 	}
 
 	// index: N
-	if _, _, err = enum.Current(); err != io.EOF {
+	if _, _, err = enum.current(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Next(); N > 1 && err != io.EOF {
+	if err = enum.next(); N > 1 && err != io.EOF {
 		t.Fatal(err)
 	}
 
-	enum, _, err = tree.Seek(enc8(0))
+	enum, _, err = tree.seek(enc8(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i := int64(1); i <= N; i++ {
 		expKey, expValue := enc8(10*i), enc8(10*i+1)
-		k, v, err := enum.Current()
+		k, v, err := enum.current()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -727,35 +727,35 @@ func TestBTreeNext(t *testing.T) {
 
 		switch {
 		case i == N:
-			if err := enum.Next(); err != io.EOF {
+			if err := enum.next(); err != io.EOF {
 				t.Fatal(err)
 			}
 		default:
-			if err := enum.Next(); err != nil {
+			if err := enum.next(); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 }
 
-func TestBTreePrev(t *testing.T) {
+func TestbTreePrev(t *testing.T) {
 	N := int64(*testN)
 
 	tree := NewBTree(nil)
-	enum, _, err := tree.Seek(enc8(0))
+	enum, _, err := tree.seek(enc8(0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err = enum.Current(); err != io.EOF {
+	if _, _, err = enum.current(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Next(); err != io.EOF {
+	if err = enum.next(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Prev(); err != io.EOF {
+	if err = enum.prev(); err != io.EOF {
 		t.Fatal(err)
 	}
 
@@ -766,7 +766,7 @@ func TestBTreePrev(t *testing.T) {
 
 	var eq bool
 
-	enum, eq, err = tree.Seek(enc8(0))
+	enum, eq, err = tree.seek(enc8(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,15 +776,15 @@ func TestBTreePrev(t *testing.T) {
 	}
 
 	// index: 0
-	if _, _, err = enum.Current(); err != nil {
+	if _, _, err = enum.current(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = enum.Prev(); err != io.EOF {
+	if err = enum.prev(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	enum, eq, err = tree.Seek(enc8(N * 10))
+	enum, eq, err = tree.seek(enc8(N * 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -794,15 +794,15 @@ func TestBTreePrev(t *testing.T) {
 	}
 
 	// index: N-1
-	if _, _, err = enum.Current(); err != nil {
+	if _, _, err = enum.current(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = enum.Prev(); N > 1 && err != nil {
+	if err = enum.prev(); N > 1 && err != nil {
 		t.Fatal(err)
 	}
 
-	enum, eq, err = tree.Seek(enc8(N*10 + 1))
+	enum, eq, err = tree.seek(enc8(N*10 + 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -812,22 +812,22 @@ func TestBTreePrev(t *testing.T) {
 	}
 
 	// index: N
-	if _, _, err = enum.Current(); err != io.EOF {
+	if _, _, err = enum.current(); err != io.EOF {
 		t.Fatal(err)
 	}
 
-	if err = enum.Prev(); err != nil {
+	if err = enum.prev(); err != nil {
 		t.Fatal(err)
 	}
 
-	enum, _, err = tree.Seek(enc8(N * 10))
+	enum, _, err = tree.seek(enc8(N * 10))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i := N; i >= 1; i-- {
 		expKey, expValue := enc8(10*i), enc8(10*i+1)
-		k, v, err := enum.Current()
+		k, v, err := enum.current()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -842,11 +842,11 @@ func TestBTreePrev(t *testing.T) {
 
 		switch {
 		case i == 1:
-			if err := enum.Prev(); err != io.EOF {
+			if err := enum.prev(); err != io.EOF {
 				t.Fatal(err)
 			}
 		default:
-			if err := enum.Prev(); err != nil {
+			if err := enum.prev(); err != nil {
 				t.Fatal(i, err)
 			}
 		}
@@ -1091,31 +1091,31 @@ func TestLast(t *testing.T) {
 	}
 }
 
-func TestSeekFirst(t *testing.T) {
+func TestseekFirst(t *testing.T) {
 	bt := NewBTree(nil)
 
-	enum, err := bt.SeekFirst()
+	enum, err := bt.seekFirst()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
 	bt.Set([]byte("c"), []byte("d"))
-	enum, err = bt.SeekFirst()
+	enum, err = bt.seekFirst()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = enum.Prev()
+	err = enum.prev()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	err = enum.Next()
+	err = enum.next()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	k, v, err := enum.Current()
+	k, v, err := enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1125,17 +1125,17 @@ func TestSeekFirst(t *testing.T) {
 	}
 
 	bt.Set([]byte("a"), []byte("b"))
-	enum, err = bt.SeekFirst()
+	enum, err = bt.seekFirst()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = enum.Prev()
+	err = enum.prev()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	k, v, err = enum.Current()
+	k, v, err = enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,12 +1144,12 @@ func TestSeekFirst(t *testing.T) {
 		t.Fatal(k, v)
 	}
 
-	err = enum.Next()
+	err = enum.next()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	k, v, err = enum.Current()
+	k, v, err = enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1159,31 +1159,31 @@ func TestSeekFirst(t *testing.T) {
 	}
 }
 
-func TestSeekLast(t *testing.T) {
+func TestseekLast(t *testing.T) {
 	bt := NewBTree(nil)
 
-	enum, err := bt.SeekFirst()
+	enum, err := bt.seekFirst()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
 	bt.Set([]byte("a"), []byte("b"))
-	enum, err = bt.SeekFirst()
+	enum, err = bt.seekFirst()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = enum.Prev()
+	err = enum.prev()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	err = enum.Next()
+	err = enum.next()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	k, v, err := enum.Current()
+	k, v, err := enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1193,17 +1193,17 @@ func TestSeekLast(t *testing.T) {
 	}
 
 	bt.Set([]byte("c"), []byte("d"))
-	enum, err = bt.SeekLast()
+	enum, err = bt.seekLast()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = enum.Next()
+	err = enum.next()
 	if err != io.EOF {
 		t.Fatal(err)
 	}
 
-	k, v, err = enum.Current()
+	k, v, err = enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1212,12 +1212,12 @@ func TestSeekLast(t *testing.T) {
 		t.Fatal(k, v)
 	}
 
-	err = enum.Prev()
+	err = enum.prev()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	k, v, err = enum.Current()
+	k, v, err = enum.current()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1456,7 +1456,7 @@ func BenchmarkBTreeSetACIDFiler1e3(b *testing.B) {
 	benchmarkBTreeSetACIDFiler(b, 1e3)
 }
 
-func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) {
+func testbTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) {
 	b := NewBTree(nil)
 	if err := b.Set([]byte{1}, []byte{2}); err != nil {
 		t.Fatal(err)
@@ -1466,20 +1466,20 @@ func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) 
 		t.Fatal(err)
 	}
 
-	e, err := b.SeekFirst()
+	e, err := b.seekFirst()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err = e.Current(); err != nil {
+	if _, _, err = e.current(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = e.Next(); err != nil {
+	if err = e.next(); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = e.Prev(); err != nil {
+	if err = e.prev(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1487,7 +1487,7 @@ func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) 
 		t.Fatal(err)
 	}
 
-	if _, _, err = e.Current(); err == nil {
+	if _, _, err = e.current(); err == nil {
 		t.Fatal(err)
 	}
 
@@ -1495,7 +1495,7 @@ func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) 
 		t.Fatalf("%T", err)
 	}
 
-	err = e.Next()
+	err = e.next()
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -1504,7 +1504,7 @@ func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) 
 		t.Fatalf("%T", err)
 	}
 
-	err = e.Prev()
+	err = e.prev()
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -1516,11 +1516,11 @@ func testBTreeEnumeratorInvalidating(t *testing.T, mutate func(b *BTree) error) 
 }
 
 func TestBTreeEnumeratorInvalidating(t *testing.T) {
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Clear() })
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Delete([]byte{1}) })
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.DeleteAny(); return err })
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Extract(nil, []byte{1}); return err })
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error {
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Clear() })
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Delete([]byte{1}) })
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.DeleteAny(); return err })
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error { _, err := b.Extract(nil, []byte{1}); return err })
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error {
 		_, _, err := b.Put(
 			nil,
 			[]byte{1},
@@ -1528,5 +1528,340 @@ func TestBTreeEnumeratorInvalidating(t *testing.T) {
 		)
 		return err
 	})
-	testBTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Set([]byte{4}, []byte{5}) })
+	testbTreeEnumeratorInvalidating(t, func(b *BTree) error { return b.Set([]byte{4}, []byte{5}) })
+}
+
+func n2b(n int) []byte {
+	var b [8]byte
+	binary.BigEndian.PutUint64(b[:], uint64(n))
+	return b[:]
+}
+
+func b2n(b []byte) int {
+	if len(b) != 8 {
+		return mathutil.MinInt
+	}
+
+	return int(binary.BigEndian.Uint64(b))
+}
+
+func TestBTreeSeekNext(t *testing.T) {
+	// seeking within 3 keys: 10, 20, 30
+	table := []struct {
+		k    int
+		hit  bool
+		keys []int
+	}{
+		{5, false, []int{10, 20, 30}},
+		{10, true, []int{10, 20, 30}},
+		{15, false, []int{20, 30}},
+		{20, true, []int{20, 30}},
+		{25, false, []int{30}},
+		{30, true, []int{30}},
+		{35, false, []int{}},
+	}
+
+	for i, test := range table {
+		up := test.keys
+		db := NewBTree(nil)
+
+		if err := db.Set(n2b(10), n2b(100)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		if err := db.Set(n2b(20), n2b(200)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		if err := db.Set(n2b(30), n2b(300)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		for brokenSerial := 0; brokenSerial < 16; brokenSerial++ {
+			en, hit, err := db.Seek(n2b(test.k))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g, e := hit, test.hit; g != e {
+				t.Fatal(i, g, e)
+			}
+
+			j := 0
+			for {
+				if brokenSerial&(1<<uint(j)) != 0 {
+					if err := db.Set(n2b(20), n2b(200)); err != nil {
+						t.Fatal(i, err)
+					}
+				}
+
+				k, v, err := en.Next()
+				if err != nil {
+					if err != io.EOF {
+						t.Fatal(i, err)
+					}
+
+					break
+				}
+
+				if g, e := len(k), 8; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				if j >= len(up) {
+					t.Fatal(i, j, brokenSerial)
+				}
+
+				if g, e := b2n(k), up[j]; g != e {
+					t.Fatal(i, j, brokenSerial, g, e)
+				}
+
+				if g, e := len(v), 8; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				if g, e := b2n(v), 10*up[j]; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				j++
+
+			}
+
+			if g, e := j, len(up); g != e {
+				t.Fatal(i, j, g, e)
+			}
+		}
+
+	}
+}
+
+func TestBTreeSeekPrev(t *testing.T) {
+	// seeking within 3 keys: 10, 20, 30
+	table := []struct {
+		k    int
+		hit  bool
+		keys []int
+	}{
+		{5, false, []int{10}},
+		{10, true, []int{10}},
+		{15, false, []int{20, 10}},
+		{20, true, []int{20, 10}},
+		{25, false, []int{30, 20, 10}},
+		{30, true, []int{30, 20, 10}},
+		{35, false, []int{}},
+	}
+
+	for i, test := range table {
+		down := test.keys
+		db := NewBTree(nil)
+		if err := db.Set(n2b(10), n2b(100)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		if err := db.Set(n2b(20), n2b(200)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		if err := db.Set(n2b(30), n2b(300)); err != nil {
+			t.Fatal(i, err)
+		}
+
+		for brokenSerial := 0; brokenSerial < 16; brokenSerial++ {
+			en, hit, err := db.Seek(n2b(test.k))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if g, e := hit, test.hit; g != e {
+				t.Fatal(i, g, e)
+			}
+
+			j := 0
+			for {
+				if brokenSerial&(1<<uint(j)) != 0 {
+					if err := db.Set(n2b(20), n2b(200)); err != nil {
+						t.Fatal(i, err)
+					}
+				}
+
+				k, v, err := en.Prev()
+				if err != nil {
+					if err != io.EOF {
+						t.Fatal(i, err)
+					}
+
+					break
+				}
+
+				if g, e := len(k), 8; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				if j >= len(down) {
+					t.Fatal(i, j, brokenSerial)
+				}
+
+				if g, e := b2n(k), down[j]; g != e {
+					t.Fatal(i, j, brokenSerial, g, e)
+				}
+
+				if g, e := len(v), 8; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				if g, e := b2n(v), 10*down[j]; g != e {
+					t.Fatal(i, g, e)
+				}
+
+				j++
+
+			}
+
+			if g, e := j, len(down); g != e {
+				t.Fatal(i, j, g, e)
+			}
+		}
+
+	}
+}
+
+func TestBTreeSeekFirst(t *testing.T) {
+	db := NewBTree(nil)
+	en, err := db.SeekFirst()
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Set(n2b(100), n2b(1000)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekFirst(); err != nil {
+		t.Fatal(err)
+	}
+
+	k, v, err := en.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 100; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 1000; g != e {
+		t.Fatal(g, e)
+	}
+
+	if err := db.Set(n2b(110), n2b(1100)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekFirst(); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err = en.Next(); err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 100; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 1000; g != e {
+		t.Fatal(g, e)
+	}
+
+	if err := db.Set(n2b(90), n2b(900)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekFirst(); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err = en.Next(); err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 90; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 900; g != e {
+		t.Fatal(g, e)
+	}
+
+}
+
+func TestBTreeSeekLast(t *testing.T) {
+	db := NewBTree(nil)
+	en, err := db.SeekLast()
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Set(n2b(100), n2b(1000)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekLast(); err != nil {
+		t.Fatal(err)
+	}
+
+	k, v, err := en.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 100; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 1000; g != e {
+		t.Fatal(g, e)
+	}
+
+	if err := db.Set(n2b(90), n2b(900)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekLast(); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err = en.Next(); err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 100; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 1000; g != e {
+		t.Fatal(g, e)
+	}
+
+	if err := db.Set(n2b(110), n2b(1100)); err != nil {
+		t.Fatal(err)
+	}
+
+	if en, err = db.SeekLast(); err != nil {
+		t.Fatal(err)
+	}
+
+	if k, v, err = en.Next(); err != nil {
+		t.Fatal(err)
+	}
+
+	if g, e := b2n(k), 110; g != e {
+		t.Fatal(g, e)
+	}
+
+	if g, e := b2n(v), 1100; g != e {
+		t.Fatal(g, e)
+	}
+
 }
