@@ -29,16 +29,16 @@ type Slice struct {
 // be provided by the client of dbm.
 func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err error) {
 	var (
-		enum      *lldb.BTreeEnumerator
-		bk, bv    []byte
-		k, v      []interface{}
-		hit, more bool
-		skip      = len(s.prefix)
-		db        = s.a.db
-		noVal     bool
-		from      = append(bpack(s.a.prefix), s.from...)
-		to        = append(bpack(s.a.prefix), s.to...)
-		bprefix   = s.a.prefix
+		enum    *lldb.BTreeEnumerator
+		bk, bv  []byte
+		k, v    []interface{}
+		more    bool
+		skip    = len(s.prefix)
+		db      = s.a.db
+		noVal   bool
+		from    = append(bpack(s.a.prefix), s.from...)
+		to      = append(bpack(s.a.prefix), s.to...)
+		bprefix = s.a.prefix
 	)
 
 	ok, err := s.a.validate(false)
@@ -76,7 +76,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 		}
 
 		for {
-			if bk, bv, err = enum.Current(); err != nil {
+			if bk, bv, err = enum.Next(); err != nil {
 				return noEof(err)
 			}
 
@@ -109,15 +109,6 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 			}
 
 			doLeave = true
-			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				return noEof(err)
-			}
-
-			if hit {
-				if err = enum.Next(); err != nil {
-					return noEof(err)
-				}
-			}
 		}
 	case s.from == nil && s.to != nil:
 		if err = db.enter(); err != nil {
@@ -130,7 +121,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 		}
 
 		for {
-			if bk, bv, err = enum.Current(); err != nil {
+			if bk, bv, err = enum.Next(); err != nil {
 				return noEof(err)
 			}
 
@@ -163,15 +154,6 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 			}
 
 			doLeave = true
-			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				return noEof(err)
-			}
-
-			if hit {
-				if err = enum.Next(); err != nil {
-					return noEof(err)
-				}
-			}
 		}
 	case s.from != nil && s.to == nil:
 		if err = db.enter(); err != nil {
@@ -184,7 +166,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 		}
 
 		for {
-			if bk, bv, err = enum.Current(); err != nil {
+			if bk, bv, err = enum.Next(); err != nil {
 				return noEof(err)
 			}
 
@@ -217,15 +199,6 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 			}
 
 			doLeave = true
-			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				return noEof(err)
-			}
-
-			if hit {
-				if err = enum.Next(); err != nil {
-					return noEof(err)
-				}
-			}
 		}
 	case s.from != nil && s.to != nil:
 		if err = db.enter(); err != nil {
@@ -238,7 +211,7 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 		}
 
 		for {
-			if bk, bv, err = enum.Current(); err != nil {
+			if bk, bv, err = enum.Next(); err != nil {
 				return noEof(err)
 			}
 
@@ -271,15 +244,6 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 			}
 
 			doLeave = true
-			if enum, hit, err = s.a.tree.Seek(bk); err != nil {
-				return noEof(err)
-			}
-
-			if hit {
-				if err = enum.Next(); err != nil {
-					return noEof(err)
-				}
-			}
 		}
 	}
 	return noEof(err)
