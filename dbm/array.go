@@ -6,6 +6,8 @@ package dbm
 
 import (
 	"fmt"
+	"io"
+
 	"github.com/cznic/exp/lldb"
 )
 
@@ -397,4 +399,25 @@ func (a *Array) Slice(from, to []interface{}) (s *Slice, err error) {
 		from:   bf,
 		to:     bt,
 	}, nil
+}
+
+// Dump outputs a human readable dump of a to w.  Intended use is only for
+// examples or debugging. Some type information is lost in the rendering, for
+// example a float value '17.' and an integer value '17' may both output as
+// '17'.
+//
+// Note: Dump will lock the database until finished.
+func (a *Array) Dump(w io.Writer) (err error) {
+	if err = a.db.enter(); err != nil {
+		return
+	}
+
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
+
+	return a.tree.Dump(w)
 }
