@@ -315,6 +315,7 @@ func decodeFloat(b []byte) float64 {
 
 // DecodeScalars decodes a []byte produced by EncodeScalars.
 func DecodeScalars(b []byte) (scalars []interface{}, err error) {
+	b0 := b
 	for len(b) != 0 {
 		switch tag := b[0]; tag {
 		//default:
@@ -484,7 +485,7 @@ func DecodeScalars(b []byte) (scalars []interface{}, err error) {
 	return append([]interface{}(nil), scalars...), nil
 
 corrupted:
-	return nil, fmt.Errorf("DecodeScalars: corrupted data")
+	return nil, &ErrDecodeScalars{append([]byte(nil), b0...), len(b0) - len(b)}
 }
 
 func collateComplex(x, y complex128) int {

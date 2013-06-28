@@ -13,6 +13,17 @@ import (
 	"fmt"
 )
 
+// ErrDecodeScalars is possibly returned from DecodeScalars
+type ErrDecodeScalars struct {
+	B []byte // Data being decoded
+	I int    // offending offset
+}
+
+// Error implements the built in error type.
+func (e *ErrDecodeScalars) Error() string {
+	return fmt.Sprintf("DecodeScalars: corrupted data @ %d/%d", e.I, len(e.B))
+}
+
 // ErrINVAL reports invalid values passed as parameters, for example negative
 // offsets where only non-negative ones are allowed or read from the DB.
 type ErrINVAL struct {

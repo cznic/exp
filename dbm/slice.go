@@ -57,7 +57,12 @@ func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err e
 	doLeave := false
 	defer func() {
 		if e := recover(); e != nil {
-			err = fmt.Errorf("%v", e)
+			switch x, ok := e.(error); ok {
+			case true:
+				err = x
+			case false:
+				err = fmt.Errorf("%v", e)
+			}
 		}
 		if doLeave {
 			db.leave(&err)
