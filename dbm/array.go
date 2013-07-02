@@ -421,3 +421,12 @@ func (a *Array) Dump(w io.Writer) (err error) {
 
 	return a.tree.Dump(w)
 }
+
+func (a *Array) Tree() (tr *lldb.BTree, err error) {
+	_, err = a.validate(false)
+	if err != nil {
+		return
+	}
+
+	return a.tree, nil
+}
