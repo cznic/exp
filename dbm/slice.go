@@ -7,7 +7,6 @@
 package dbm
 
 import (
-	"fmt"
 	"github.com/cznic/exp/lldb"
 )
 
@@ -15,7 +14,7 @@ import (
 type Slice struct {
 	a        *Array
 	prefix   []interface{}
-	from, to []byte
+	from, to []interface{}
 }
 
 // Do calls f for every subscripts-value pair in s in ascending collation order
@@ -29,227 +28,263 @@ type Slice struct {
 // be provided by the client of dbm.
 func (s *Slice) Do(f func(subscripts, value []interface{}) (bool, error)) (err error) {
 	var (
-		enum    *lldb.BTreeEnumerator
-		bk, bv  []byte
-		k, v    []interface{}
-		more    bool
-		skip    = len(s.prefix)
-		db      = s.a.db
-		noVal   bool
-		from    = append(bpack(s.a.prefix), s.from...)
-		to      = append(bpack(s.a.prefix), s.to...)
-		bprefix = s.a.prefix
+		db    = s.a.db
+		noVal bool
 	)
 
-	ok, err := s.a.validate(false)
-	if !ok && err != nil {
-		return err
-	}
-
-	if s.a.tree == nil {
+	if err = db.enter(); err != nil {
 		return
 	}
 
-	if t := s.a.tree; !t.IsMem() && t.Handle() == 1 {
-		noVal = true
-	}
-
-	doLeave := false
+	doLeave := true
 	defer func() {
-		if e := recover(); e != nil {
-			switch x, ok := e.(error); ok {
-			case true:
-				err = x
-			case false:
-				err = fmt.Errorf("%v", e)
-			}
-		}
 		if doLeave {
 			db.leave(&err)
 		}
 	}()
 
+	ok, err := s.a.validate(false)
+	if !ok {
+		return err
+	}
+
+	tree := s.a.tree
+	if !tree.IsMem() && tree.Handle() == 1 {
+		noVal = true
+	}
+
 	switch {
 	case s.from == nil && s.to == nil:
-		if err = db.enter(); err != nil {
-			return
+		bprefix, err := lldb.EncodeScalars(s.prefix...)
+		if err != nil {
+			return err
 		}
 
-		doLeave = true
-		if enum, _, err = s.a.tree.Seek(bprefix); err != nil {
+		enum, _, err := tree.Seek(bprefix)
+		if err != nil {
 			return noEof(err)
 		}
 
 		for {
-			if bk, bv, err = enum.Next(); err != nil {
+			bk, bv, err := enum.Next()
+			if err != nil {
 				return noEof(err)
 			}
 
-			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
-				return nil
-			}
-
-			if k, err = lldb.DecodeScalars(bk); err != nil {
+			k, err := lldb.DecodeScalars(bk)
+			if err != nil {
 				return noEof(err)
 			}
 
-			if v, err = lldb.DecodeScalars(bv); err != nil {
-				return noEof(err)
+			if n := len(s.prefix); n != 0 {
+				if len(k) < len(s.prefix) {
+					return nil
+				}
+
+				c, err := lldb.Collate(k[:n], s.prefix, nil)
+				if err != nil {
+					return err
+				}
+
+				if c > 0 {
+					return nil
+				}
+			}
+
+			v, err := lldb.DecodeScalars(bv)
+			if err != nil {
+				return err
 			}
 
 			doLeave = false
 			if db.leave(&err) != nil {
-				return
+				return err
 			}
 
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
-			if more, err = f(k[skip:], v); !more || err != nil {
+			if more, err := f(k[len(s.prefix):], v); !more || err != nil {
 				return noEof(err)
 			}
 
 			if err = db.enter(); err != nil {
-				return
+				return err
 			}
 
 			doLeave = true
 		}
 	case s.from == nil && s.to != nil:
-		if err = db.enter(); err != nil {
-			return
+		bprefix, err := lldb.EncodeScalars(s.prefix...)
+		if err != nil {
+			return err
 		}
 
-		doLeave = true
-		if enum, _, err = s.a.tree.Seek(from); err != nil {
+		enum, _, err := tree.Seek(bprefix)
+		if err != nil {
 			return noEof(err)
 		}
 
+		to := append(append([]interface{}(nil), s.prefix...), s.to...)
 		for {
-			if bk, bv, err = enum.Next(); err != nil {
+			bk, bv, err := enum.Next()
+			if err != nil {
 				return noEof(err)
 			}
 
-			if collate(bk, to) > 0 {
-				return
+			k, err := lldb.DecodeScalars(bk)
+			if err != nil {
+				return err
 			}
 
-			if k, err = lldb.DecodeScalars(bk); err != nil {
-				return noEof(err)
+			c, err := lldb.Collate(k, to, nil)
+			if err != nil {
+				return err
 			}
 
-			if v, err = lldb.DecodeScalars(bv); err != nil {
+			if c > 0 {
+				return err
+			}
+
+			v, err := lldb.DecodeScalars(bv)
+			if err != nil {
 				return noEof(err)
 			}
 
 			doLeave = false
 			if db.leave(&err) != nil {
-				return
+				return err
 			}
 
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
-			if more, err = f(k[skip:], v); !more || err != nil {
+			if more, err := f(k[len(s.prefix):], v); !more || err != nil {
 				return noEof(err)
 			}
 
 			if err = db.enter(); err != nil {
-				return
+				return err
 			}
 
 			doLeave = true
 		}
 	case s.from != nil && s.to == nil:
-		if err = db.enter(); err != nil {
-			return
+		bprefix, err := lldb.EncodeScalars(append(s.prefix, s.from...)...)
+		if err != nil {
+			return err
 		}
 
-		doLeave = true
-		if enum, _, err = s.a.tree.Seek(from); err != nil {
+		enum, _, err := tree.Seek(bprefix)
+		if err != nil {
 			return noEof(err)
 		}
 
 		for {
-			if bk, bv, err = enum.Next(); err != nil {
+			bk, bv, err := enum.Next()
+			if err != nil {
 				return noEof(err)
 			}
 
-			if len(bprefix) != 0 && collate(bk[:len(bprefix)], bprefix) > 0 {
-				return nil
-			}
-
-			if k, err = lldb.DecodeScalars(bk); err != nil {
+			k, err := lldb.DecodeScalars(bk)
+			if err != nil {
 				return noEof(err)
 			}
 
-			if v, err = lldb.DecodeScalars(bv); err != nil {
-				return noEof(err)
+			if n := len(s.prefix); n != 0 {
+				if len(k) < len(s.prefix) {
+					return nil
+				}
+
+				c, err := lldb.Collate(k[:n], s.prefix, nil)
+				if err != nil {
+					return err
+				}
+
+				if c > 0 {
+					return nil
+				}
+			}
+
+			v, err := lldb.DecodeScalars(bv)
+			if err != nil {
+				return err
 			}
 
 			doLeave = false
 			if db.leave(&err) != nil {
-				return
+				return err
 			}
 
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
-			if more, err = f(k[skip:], v); !more || err != nil {
+			if more, err := f(k[len(s.prefix):], v); !more || err != nil {
 				return noEof(err)
 			}
 
 			if err = db.enter(); err != nil {
-				return
+				return err
 			}
 
 			doLeave = true
 		}
 	case s.from != nil && s.to != nil:
-		if err = db.enter(); err != nil {
-			return
+		bprefix, err := lldb.EncodeScalars(append(s.prefix, s.from...)...)
+		if err != nil {
+			return err
 		}
 
-		doLeave = true
-		if enum, _, err = s.a.tree.Seek(from); err != nil {
+		enum, _, err := tree.Seek(bprefix)
+		if err != nil {
 			return noEof(err)
 		}
 
+		to := append(append([]interface{}(nil), s.prefix...), s.to...)
 		for {
-			if bk, bv, err = enum.Next(); err != nil {
+			bk, bv, err := enum.Next()
+			if err != nil {
 				return noEof(err)
 			}
 
-			if collate(bk, to) > 0 {
-				return nil
-			}
-
-			if k, err = lldb.DecodeScalars(bk); err != nil {
+			k, err := lldb.DecodeScalars(bk)
+			if err != nil {
 				return noEof(err)
 			}
 
-			if v, err = lldb.DecodeScalars(bv); err != nil {
-				return noEof(err)
+			c, err := lldb.Collate(k, to, nil)
+			if err != nil {
+				return err
+			}
+
+			if c > 0 {
+				return err
+			}
+
+			v, err := lldb.DecodeScalars(bv)
+			if err != nil {
+				return err
 			}
 
 			doLeave = false
 			if db.leave(&err) != nil {
-				return
+				return err
 			}
 
 			if noVal && v != nil {
 				v = []interface{}{0}
 			}
-			if more, err = f(k[skip:], v); !more || err != nil {
+			if more, err := f(k[len(s.prefix):], v); !more || err != nil {
 				return noEof(err)
 			}
 
 			if err = db.enter(); err != nil {
-				return
+				return err
 			}
 
 			doLeave = true
 		}
+	default:
+		panic("slice.go: internal error")
 	}
-	return noEof(err)
 }

@@ -379,25 +379,27 @@ func (a *Array) Clear(subscripts ...interface{}) (err error) {
 // If from is nil it works as 'from lowest existing key'.  If to is nil it
 // works as 'to highest existing key'.
 func (a *Array) Slice(from, to []interface{}) (s *Slice, err error) {
-	var bf, bt []byte
-	if bf, err = lldb.EncodeScalars(from...); err != nil {
+	if err = a.db.enter(); err != nil {
 		return
 	}
 
-	if bt, err = lldb.EncodeScalars(to...); err != nil {
-		return
-	}
+	defer func() {
+		if e := recover(); e != nil {
+			err = fmt.Errorf("%v", e)
+		}
+		a.db.leave(&err)
+	}()
 
 	prefix, err := lldb.DecodeScalars(a.prefix)
 	if err != nil {
-		panic("internal error")
+		return
 	}
 
 	return &Slice{
 		a:      a,
 		prefix: prefix,
-		from:   bf,
-		to:     bt,
+		from:   from,
+		to:     to,
 	}, nil
 }
 
