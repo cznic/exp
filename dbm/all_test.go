@@ -2864,3 +2864,40 @@ func TestLocking(t *testing.T) {
 		return
 	}
 }
+
+func TestBug20130712(t *testing.T) {
+	db, err := CreateMem(&Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := db.Array("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Set(nil, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Set(nil, 171, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err = a.Array(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := a.Slice(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Do(func(subscripts, value []interface{}) (bool, error) {
+		t.Log(subscripts, value)
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
