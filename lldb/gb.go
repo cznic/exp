@@ -30,81 +30,81 @@ const (
 	gbFloat7          // 0x0a
 	gbFloat8          // 0x0b
 	gbComplex0        // 0x0c
-	gbComplex1
-	gbComplex2
-	gbComplex3
-	gbComplex4
-	gbComplex5
-	gbComplex6
-	gbComplex7
-	gbComplex8
-	gbBytes00
-	gbBytes01
-	gbBytes02
-	gbBytes03
-	gbBytes04
-	gbBytes05
-	gbBytes06
-	gbBytes07
-	gbBytes08
-	gbBytes09
-	gbBytes10
-	gbBytes11
-	gbBytes12
-	gbBytes13
-	gbBytes14
-	gbBytes15
-	gbBytes16
-	gbBytes17
-	gbBytes1
-	gbBytes2 // Offset by one to allow 64kB sized []byte.
-	gbString00
-	gbString01
-	gbString02
-	gbString03
-	gbString04
-	gbString05
-	gbString06
-	gbString07
-	gbString08
-	gbString09
-	gbString10
-	gbString11
-	gbString12
-	gbString13
-	gbString14
-	gbString15
-	gbString16
-	gbString17
-	gbString1
-	gbString2
-	gbUintP1
-	gbUintP2
-	gbUintP3
-	gbUintP4
-	gbUintP5
-	gbUintP6
-	gbUintP7
-	gbUintP8
-	gbIntM8
-	gbIntM7
-	gbIntM6
-	gbIntM5
-	gbIntM4
-	gbIntM3
-	gbIntM2
-	gbIntM1
-	gbIntP1
-	gbIntP2
-	gbIntP3
-	gbIntP4
-	gbIntP5
-	gbIntP6
-	gbIntP7
-	gbIntP8
-	gbInt0
+	gbComplex1        // 0x0d
+	gbComplex2        // 0x0e
+	gbComplex3        // 0x0f
+	gbComplex4        // 0x10
+	gbComplex5        // 0x11
+	gbComplex6        // 0x12
+	gbComplex7        // 0x13
+	gbComplex8        // 0x14
+	gbBytes00         // 0x15
+	gbBytes01         // 0x16
+	gbBytes02         // 0x17
+	gbBytes03         // 0x18
+	gbBytes04         // 0x19
+	gbBytes05         // 0x1a
+	gbBytes06         // 0x1b
+	gbBytes07         // 0x1c
+	gbBytes08         // 0x1d
+	gbBytes09         // 0x1e
+	gbBytes10         // 0x1f
+	gbBytes11         // 0x20
+	gbBytes12         // 0x21
+	gbBytes13         // 0x22
+	gbBytes14         // 0x23
+	gbBytes15         // 0x24
+	gbBytes16         // 0x25
+	gbBytes17         // Ox26
+	gbBytes1          // 0x27
+	gbBytes2          // 0x28: Offset by one to allow 64kB sized []byte.
+	gbString00        // 0x29
+	gbString01        // 0x2a
+	gbString02        // 0x2b
+	gbString03        // 0x2c
+	gbString04        // 0x2d
+	gbString05        // 0x2e
+	gbString06        // 0x2f
+	gbString07        // 0x30
+	gbString08        // 0x31
+	gbString09        // 0x32
+	gbString10        // 0x33
+	gbString11        // 0x34
+	gbString12        // 0x35
+	gbString13        // 0x36
+	gbString14        // 0x37
+	gbString15        // 0x38
+	gbString16        // 0x39
+	gbString17        // 0x3a
+	gbString1         // 0x3b
+	gbString2         // 0x3c
+	gbUintP1          // 0x3d
+	gbUintP2          // 0x3e
+	gbUintP3          // 0x3f
+	gbUintP4          // 0x40
+	gbUintP5          // 0x41
+	gbUintP6          // 0x42
+	gbUintP7          // 0x43
+	gbUintP8          // 0x44
+	gbIntM8           // 0x45
+	gbIntM7           // 0x46
+	gbIntM6           // 0x47
+	gbIntM5           // 0x48
+	gbIntM4           // 0x49
+	gbIntM3           // 0x4a
+	gbIntM2           // 0x4b
+	gbIntM1           // 0x4c
+	gbIntP1           // 0x4d
+	gbIntP2           // 0x4e
+	gbIntP3           // 0x4f
+	gbIntP4           // 0x50
+	gbIntP5           // 0x51
+	gbIntP6           // 0x52
+	gbIntP7           // 0x53
+	gbIntP8           // 0x54
+	gbInt0            // 0x55
 
-	gbIntMax = 255 - gbInt0
+	gbIntMax = 255 - gbInt0 // 0xff == 170
 )
 
 // EncodeScalars encodes a vector of predeclared scalar type values to a
