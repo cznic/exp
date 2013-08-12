@@ -69,13 +69,13 @@ type DB struct {
 	alloc         *lldb.Allocator // The machinery. Wraps filer
 	bkl           sync.Mutex      // Big Kernel Lock
 	closeMu       sync.Mutex      // Close() coordination
-	closed        bool            // it was
-	emptySize     int64           // Any header size including FLT.
-	f             *os.File        // Underlying file. Potentially nil (if filer is lldb.MemFiler)
-	fcache        treeCache       // Files cache
-	filer         lldb.Filer      // Wraps f
-	gracePeriod   time.Duration   // WAL grace period
-	isMem         bool            // No signal capture
+	closed        chan bool
+	emptySize     int64         // Any header size including FLT.
+	f             *os.File      // Underlying file. Potentially nil (if filer is lldb.MemFiler)
+	fcache        treeCache     // Files cache
+	filer         lldb.Filer    // Wraps f
+	gracePeriod   time.Duration // WAL grace period
+	isMem         bool          // No signal capture
 	lastCommitErr error
 	lock          *os.File       // The DB file lock
 	removing      map[int64]bool // BTrees being removed
@@ -121,7 +121,7 @@ func create(f *os.File, filer lldb.Filer, opts *Options, isMem bool) (db *DB, er
 		return nil, &os.PathError{Op: "dbm.Create.WriteAt", Path: filer.Name(), Err: err}
 	}
 
-	db = &DB{emptySize: 128, f: f, lock: opts.lock}
+	db = &DB{emptySize: 128, f: f, lock: opts.lock, closed: make(chan bool)}
 
 	if filer, err = opts.acidFiler(db, filer); err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func Open(name string, opts *Options) (db *DB, err error) {
 		return nil, &os.PathError{Op: "dbm.Open:validate header", Path: name, Err: err}
 	}
 
-	db = &DB{f: f, lock: opts.lock}
+	db = &DB{f: f, lock: opts.lock, closed: make(chan bool)}
 	if filer, err = opts.acidFiler(db, filer); err != nil {
 		return nil, err
 	}
@@ -267,13 +267,16 @@ func (db *DB) Close() (err error) {
 		}
 	}()
 
-	if db.closed {
-		return
-	}
-
-	db.closed = true
 	db.closeMu.Lock()
 	defer db.closeMu.Unlock()
+
+	select {
+	case _ = <-db.closed:
+		return
+	default:
+	}
+
+	defer close(db.closed)
 
 	if db.acidTimer != nil {
 		db.acidTimer.Stop()
@@ -297,6 +300,7 @@ func (db *DB) Close() (err error) {
 	if lock := db.lock; lock != nil {
 		n := lock.Name()
 		e1 := lock.Close()
+		db.lock = nil
 		e2 := os.Remove(n)
 		if err == nil {
 			err = e1
@@ -938,8 +942,10 @@ func (db *DB) timeout() {
 	db.bkl.Lock()
 	defer db.bkl.Unlock()
 
-	if db.closed {
+	select {
+	case _ = <-db.closed:
 		return
+	default:
 	}
 
 	switch db.acidState {
