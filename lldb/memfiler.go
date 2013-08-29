@@ -79,8 +79,10 @@ package lldb
 import (
 	"bytes"
 	"fmt"
-	"github.com/cznic/mathutil"
 	"io"
+
+	"github.com/cznic/fileutil"
+	"github.com/cznic/mathutil"
 )
 
 const (
@@ -213,7 +215,7 @@ func (f *MemFiler) ReadFrom(r io.Reader) (n int64, err error) {
 			n += int64(rn)
 		}
 	}
-	if rerr != io.EOF {
+	if !fileutil.IsEOF(rerr) {
 		err = rerr
 	}
 	return
@@ -335,7 +337,7 @@ func (f *MemFiler) WriteTo(w io.Writer) (n int64, err error) {
 			n += int64(wn)
 		}
 	}
-	if rerr != io.EOF {
+	if !fileutil.IsEOF(rerr) {
 		err = rerr
 	}
 	return
