@@ -1868,7 +1868,7 @@ func TestBTreeSeekLast(t *testing.T) {
 
 // https://code.google.com/p/camlistore/issues/detail?id=216
 func TestBug216(t *testing.T) {
-	const S = 2*kKV+2 // 2*kKV+1 ok
+	const S = 2*kKV + 2 // 2*kKV+1 ok
 	const N = 300000
 	rng, err := mathutil.NewFC32(math.MinInt32, math.MaxInt32, true)
 	if err != nil {
@@ -1890,7 +1890,7 @@ func TestBug216(t *testing.T) {
 		}
 
 		if (i+1)%10000 == 0 {
-			dbg("%v", i+1)
+			//dbg("%v", i+1)
 		}
 	}
 }

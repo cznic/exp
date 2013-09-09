@@ -891,7 +891,12 @@ func (q btreeIndexPage) setLen(n int) btreeIndexPage {
 
 func (p btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64, parentIndex int, index *int) (btreeIndexPage, error) {
 	right := newBTreeIndexPage(0)
-	defer bufs.GCache.Put(right)
+	canRecycle := true
+	defer func() {
+		if canRecycle {
+			bufs.GCache.Put(right)
+		}
+	}()
 	right = right.setLen(kIndex)
 	copy(right[1:1+(2*kIndex+1)*7], p[1+14*(kIndex+1):])
 	p = p.setLen(kIndex)
@@ -930,6 +935,7 @@ func (p btreeIndexPage) split(a btreeStore, root btree, ph *int64, parent int64,
 	}
 	if *index > kIndex {
 		p = right
+		canRecycle = false
 		*ph = rh
 		*index -= kIndex + 1
 	}
