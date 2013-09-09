@@ -668,7 +668,7 @@ func OpenBTree(store *Allocator, collate func(a, b []byte) int, handle int64) (b
 	}
 
 	if len(b) != 7 {
-		return nil, &ErrILSEQ{Off: h2off(handle)}
+		return nil, &ErrILSEQ{Off: h2off(handle), More: "btree.go:671"}
 	}
 
 	return r, nil
@@ -751,7 +751,7 @@ func (s *memBTreeStore) Alloc(b []byte) (handle int64, err error) {
 
 func (s *memBTreeStore) Free(handle int64) (err error) {
 	if _, ok := s.m[handle]; !ok {
-		return &ErrILSEQ{Type: ErrOther, Off: h2off(handle)}
+		return &ErrILSEQ{Type: ErrOther, Off: h2off(handle), More: "btree.go:754"}
 	}
 
 	delete(s.m, handle)
@@ -761,7 +761,7 @@ func (s *memBTreeStore) Free(handle int64) (err error) {
 func (s *memBTreeStore) Get(dst []byte, handle int64) (b []byte, err error) {
 	r, ok := s.m[handle]
 	if !ok {
-		return nil, &ErrILSEQ{Type: ErrOther, Off: h2off(handle)}
+		return nil, &ErrILSEQ{Type: ErrOther, Off: h2off(handle), More: "btree.go:764"}
 	}
 
 	b = need(len(r), dst)
@@ -771,7 +771,7 @@ func (s *memBTreeStore) Get(dst []byte, handle int64) (b []byte, err error) {
 
 func (s *memBTreeStore) Realloc(handle int64, b []byte) (err error) {
 	if _, ok := s.m[handle]; !ok {
-		return &ErrILSEQ{Type: ErrOther, Off: h2off(handle)}
+		return &ErrILSEQ{Type: ErrOther, Off: h2off(handle), More: "btree.go:774"}
 	}
 
 	s.m[handle] = bpack(b)
