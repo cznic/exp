@@ -1,11 +1,13 @@
-all:
-	go fmt
-	go test -i
-	go test -timeout 1h
+all: editor
 	go build
 	go vet
 	go install
 	make todo
+
+editor:
+	go fmt
+	go test -i
+	go test -timeout 1h
 
 todo:
 	@grep -n ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alpha:]][[:alnum:]]* *.go || true

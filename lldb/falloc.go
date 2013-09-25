@@ -636,20 +636,20 @@ func need(n int, src []byte) []byte {
 }
 
 // Get returns the data content of a block referred to by handle or an error if
-// any.  The returned slice may be a sub-slice of dst if dst was large enough
+// any.  The returned slice may be a sub-slice of buf if buf was large enough
 // to hold the entire content.  Otherwise, a newly allocated slice will be
-// returned.  It is valid to pass a nil dst.
+// returned.  It is valid to pass a nil buf.
 //
 // If the content was stored using compression then it is transparently
 // returned decompressed.
 //
 // Handle must have been obtained initially from Alloc and must be still valid,
 // otherwise invalid data may be returned without detecting the error.
-func (a *Allocator) Get(dst []byte, handle int64) (b []byte, err error) {
-	dst = dst[:cap(dst)]
+func (a *Allocator) Get(buf []byte, handle int64) (b []byte, err error) {
+	buf = buf[:cap(buf)]
 	if n, ok := a.m[handle]; ok {
 		a.lru.moveToFront(n)
-		b = need(len(n.b), dst)
+		b = need(len(n.b), buf)
 		copy(b, n.b)
 		a.expHit++
 		a.hit++
@@ -694,11 +694,11 @@ reloc:
 			default:
 				return nil, &ErrILSEQ{Type: ErrTailTag, Off: off, Arg: int64(tag)}
 			case tagNotCompressed:
-				b = need(dlen, dst)
+				b = need(dlen, buf)
 				copy(b, first[1:])
 				return
 			case tagCompressed:
-				return zappy.Decode(dst, first[1:dlen+1])
+				return zappy.Decode(buf, first[1:dlen+1])
 			}
 		default:
 			cc := bufs.GCache.Get(1)
@@ -714,10 +714,10 @@ reloc:
 			default:
 				return nil, &ErrILSEQ{Type: ErrTailTag, Off: off, Arg: int64(tag)}
 			case tagNotCompressed:
-				b = need(dlen, dst)
+				b = need(dlen, buf)
 				off += 1
 				if err = a.read(b, off); err != nil {
-					b = dst[:0]
+					b = buf[:0]
 				}
 				return
 			case tagCompressed:
@@ -725,14 +725,14 @@ reloc:
 				defer bufs.GCache.Put(zbuf)
 				off += 1
 				if err = a.read(zbuf, off); err != nil {
-					return dst[:0], err
+					return buf[:0], err
 				}
 
-				return zappy.Decode(dst, zbuf)
+				return zappy.Decode(buf, zbuf)
 			}
 		}
 	case 0:
-		return dst[:0], nil
+		return buf[:0], nil
 	case tagUsedLong:
 		cc := bufs.GCache.Get(1)
 		defer bufs.GCache.Put(cc)
@@ -747,10 +747,10 @@ reloc:
 		default:
 			return nil, &ErrILSEQ{Type: ErrTailTag, Off: off, Arg: int64(tag)}
 		case tagNotCompressed:
-			b = need(dlen, dst)
+			b = need(dlen, buf)
 			off += 3
 			if err = a.read(b, off); err != nil {
-				b = dst[:0]
+				b = buf[:0]
 			}
 			return
 		case tagCompressed:
@@ -758,10 +758,10 @@ reloc:
 			defer bufs.GCache.Put(zbuf)
 			off += 3
 			if err = a.read(zbuf, off); err != nil {
-				return dst[:0], err
+				return buf[:0], err
 			}
 
-			return zappy.Decode(dst, zbuf)
+			return zappy.Decode(buf, zbuf)
 		}
 	case tagFreeShort, tagFreeLong:
 		return nil, &ErrILSEQ{Type: ErrExpUsedTag, Off: off, Arg: int64(tag)}
