@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	"github.com/cznic/exp/lldb"
-	"github.com/cznic/mathutil"
 	"github.com/cznic/fileutil"
+	"github.com/cznic/mathutil"
 )
 
 type header struct {

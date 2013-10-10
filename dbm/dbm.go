@@ -7,9 +7,12 @@ package dbm
 //DONE +Top level Sync? Optional? (Measure it)
 //	Too slow. Added db.Sync() instead.
 
-//TODO user defined collating
+//DONE user defined collating
 //	- on DB create (sets the default)
 //	- per Array? (probably a MUST HAVE feature)
+//----
+//	After Go will support Unicode locale collating. But that would have
+//	to bee a too different API then. (package udbm?)
 
 import (
 	"fmt"
@@ -1150,4 +1153,9 @@ func (db *DB) PeakWALSize() int64 {
 	}
 
 	return af.PeakWALSize()
+}
+
+// IsMem reports whether db is backed by memory only.
+func (db *DB) IsMem() bool {
+	return db.isMem
 }
