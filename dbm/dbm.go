@@ -17,7 +17,6 @@ package dbm
 import (
 	"fmt"
 	"os"
-	"os/signal"
 	"runtime"
 	"strings"
 	"sync"
@@ -648,15 +647,6 @@ func (db *DB) removeArray(prefix int, array string) (err error) {
 
 func (db *DB) boot() (err error) {
 	const tmp = "/tmp/"
-
-	if !db.isMem {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt, os.Kill)
-		go func() {
-			<-c
-			db.Close()
-		}()
-	}
 
 	aa, err := db.Arrays()
 	if err != nil {
