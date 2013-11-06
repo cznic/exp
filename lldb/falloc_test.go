@@ -1706,7 +1706,7 @@ func TestFltFind(t *testing.T) {
 	f.init()
 	f[1].head = 1
 	if h := f.find(2); h != 1 || f[1].head != 0 {
-		t.Fatalf("\n%s\n%d", f, h)
+		t.Fatal(f, h)
 	}
 
 	f.init()

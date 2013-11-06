@@ -25,12 +25,12 @@ const (
 type newFunc func() Filer
 
 type testFileFiler struct {
-	*SimpleFileFiler
+	Filer
 }
 
 func (t *testFileFiler) Close() (err error) {
 	n := t.Name()
-	err = t.SimpleFileFiler.Close()
+	err = t.Filer.Close()
 	if errDel := os.Remove(n); errDel != nil && err == nil {
 		err = errDel
 	}
@@ -39,12 +39,21 @@ func (t *testFileFiler) Close() (err error) {
 
 var (
 	newFileFiler = func() Filer {
-		file, err := ioutil.TempFile("", "lldb-test")
+		file, err := ioutil.TempFile("", "lldb-test-file")
 		if err != nil {
 			panic(err)
 		}
 
 		return &testFileFiler{NewSimpleFileFiler(file)}
+	}
+
+	newOSFileFiler = func() Filer {
+		file, err := ioutil.TempFile("", "lldb-test-osfile")
+		if err != nil {
+			panic(err)
+		}
+
+		return &testFileFiler{NewOSFiler(file, file.Name())}
 	}
 
 	newMemFiler = func() Filer {
@@ -80,6 +89,7 @@ var (
 
 func TestFilerNesting(t *testing.T) {
 	testFilerNesting(t, newFileFiler)
+	testFilerNesting(t, newOSFileFiler)
 	testFilerNesting(t, newMemFiler)
 	testFilerNesting(t, newRollbackFiler)
 }
@@ -129,6 +139,7 @@ func testFilerNesting(t *testing.T, nf newFunc) {
 
 func TestFilerTruncate(t *testing.T) {
 	testFilerTruncate(t, newFileFiler)
+	testFilerTruncate(t, newOSFileFiler)
 	testFilerTruncate(t, newMemFiler)
 	testFilerTruncate(t, nwBitFiler)
 	testFilerTruncate(t, newRollbackFiler)
@@ -206,6 +217,7 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 
 func TestFilerReadAtWriteAt(t *testing.T) {
 	testFilerReadAtWriteAt(t, newFileFiler)
+	testFilerReadAtWriteAt(t, newOSFileFiler)
 	testFilerReadAtWriteAt(t, newMemFiler)
 	testFilerReadAtWriteAt(t, nwBitFiler)
 	testFilerReadAtWriteAt(t, newRollbackFiler)
@@ -355,6 +367,7 @@ func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
 
 func TestInnerFiler(t *testing.T) {
 	testInnerFiler(t, newFileFiler)
+	testInnerFiler(t, newOSFileFiler)
 	testInnerFiler(t, newMemFiler)
 	testInnerFiler(t, nwBitFiler)
 	testInnerFiler(t, newRollbackFiler)
@@ -559,6 +572,7 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 
 func TestFileReadAtHole(t *testing.T) {
 	testFileReadAtHole(t, newFileFiler)
+	testFileReadAtHole(t, newOSFileFiler)
 	testFileReadAtHole(t, newMemFiler)
 	testFileReadAtHole(t, nwBitFiler)
 	testFileReadAtHole(t, newRollbackFiler)
