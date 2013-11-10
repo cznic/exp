@@ -53,7 +53,7 @@ var (
 			panic(err)
 		}
 
-		return &testFileFiler{NewOSFiler(file, file.Name())}
+		return &testFileFiler{NewOSFiler(file)}
 	}
 
 	newMemFiler = func() Filer {

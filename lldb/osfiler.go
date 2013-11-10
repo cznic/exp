@@ -6,6 +6,9 @@ package lldb
 
 import (
 	"io"
+	"os"
+
+	"github.com/cznic/mathutil"
 )
 
 var _ Filer = (*OSFiler)(nil)
@@ -13,26 +16,31 @@ var _ Filer = (*OSFiler)(nil)
 // OSFile is an os.File like minimal set of methods allowing to construct a
 // Filer.
 type OSFile interface {
-	io.Closer
-	io.ReadWriteSeeker
+	Name() string
+	Stat() (fi os.FileInfo, err error)
 	Sync() (err error)
 	Truncate(size int64) (err error)
+	io.Closer
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	io.WriterAt
 }
 
 // OSFiler is like a SimpleFileFiler but based on an OSFile.
 type OSFiler struct {
 	f    OSFile
 	nest int
-	name string
+	size int64 // not set if < 0
 }
 
 // NewOSFiler returns a Filer from an OSFile. This Filer is like the
 // SimpleFileFiler, it does not implement the transaction related methods.
-// name is any string. It's used only by Name.
-func NewOSFiler(f OSFile, name string) (r *OSFiler) {
+func NewOSFiler(f OSFile) (r *OSFiler) {
 	return &OSFiler{
 		f:    f,
-		name: name,
+		size: -1,
 	}
 }
 
@@ -63,7 +71,7 @@ func (f *OSFiler) EndUpdate() (err error) {
 
 // Name implements Filer.
 func (f *OSFiler) Name() string {
-	return f.name
+	return f.f.Name()
 }
 
 // PunchHole implements Filer.
@@ -73,11 +81,7 @@ func (f *OSFiler) PunchHole(off, size int64) (err error) {
 
 // ReadAt implements Filer.
 func (f *OSFiler) ReadAt(b []byte, off int64) (n int, err error) {
-	if _, err = f.f.Seek(off, 0); err != nil {
-		return
-	}
-
-	return f.f.Read(b)
+	return f.f.ReadAt(b, off)
 }
 
 // Rollback implements Filer.
@@ -85,7 +89,15 @@ func (f *OSFiler) Rollback() (err error) { return }
 
 // Size implements Filer.
 func (f *OSFiler) Size() (n int64, err error) {
-	return f.f.Seek(0, 2)
+	if f.size < 0 { // boot
+		fi, err := f.f.Stat()
+		if err != nil {
+			return 0, err
+		}
+
+		f.size = fi.Size()
+	}
+	return f.size, nil
 }
 
 // Sync implements Filer.
@@ -95,14 +107,24 @@ func (f *OSFiler) Sync() (err error) {
 
 // Truncate implements Filer.
 func (f *OSFiler) Truncate(size int64) (err error) {
+	if size < 0 {
+		return &ErrINVAL{"Truncate size", size}
+	}
+
+	f.size = size
 	return f.f.Truncate(size)
 }
 
 // WriteAt implements Filer.
 func (f *OSFiler) WriteAt(b []byte, off int64) (n int, err error) {
-	if _, err = f.f.Seek(off, 0); err != nil {
-		return
-	}
+	if f.size < 0 { // boot
+		fi, err := os.Stat(f.f.Name())
+		if err != nil {
+			return 0, err
+		}
 
-	return f.f.Write(b)
+		f.size = fi.Size()
+	}
+	f.size = mathutil.MaxInt64(f.size, int64(len(b))+off)
+	return f.f.WriteAt(b, off)
 }
