@@ -776,6 +776,8 @@ reloc:
 	}
 }
 
+var reallocTestHook bool
+
 // Realloc sets the content of a block referred to by handle or returns an
 // error, if any.
 //
@@ -795,6 +797,12 @@ func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 		a.m[handle] = n
 	} else {
 		a.cadd(b, handle)
+	}
+
+	if reallocTestHook {
+		if err = cacheAudit(a.m, &a.lru); err != nil {
+			return
+		}
 	}
 
 	return a.realloc(handle, b)

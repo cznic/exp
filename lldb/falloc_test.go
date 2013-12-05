@@ -30,6 +30,10 @@ var (
 	oKeep                 = flag.Bool("keep", false, "do not delete testing DB/WAL (where applicable)")
 )
 
+func init() {
+	reallocTestHook = true
+}
+
 func mfBytes(f Filer) []byte {
 	var b bytes.Buffer
 	if _, err := f.(*MemFiler).WriteTo(&b); err != nil {
@@ -134,6 +138,10 @@ func (a *pAllocator) Realloc(handle int64, b []byte) (err error) {
 	}
 
 	if err = a.Allocator.Realloc(handle, b); err != nil {
+		return
+	}
+
+	if err = cacheAudit(a.Allocator.m, &a.Allocator.lru); err != nil {
 		return
 	}
 
@@ -914,6 +922,10 @@ func TestAllocatorRnd(t *testing.T) {
 						"D) h:%#x, len(b):%#4x, len(wb): %#x, err %v",
 						h, len0, len(wb), err,
 					)
+				}
+
+				if err = cacheAudit(a.m, &a.lru); err != nil {
+					t.Fatal(err)
 				}
 
 				ref[h] = wb
@@ -1841,4 +1853,75 @@ func TestFltHead(t *testing.T) {
 		t.Fatal(h)
 	}
 
+}
+
+func cacheAudit(m map[int64]*node, l *lst) (err error) {
+	cnt := 0
+	for h, n := range m {
+		if g, e := n.h, h; g != e {
+			return fmt.Errorf("cacheAudit: invalid node handle %d != %d", g, e)
+		}
+
+		if cnt, err = l.audit(n, true); err != nil {
+			return
+		}
+	}
+
+	if g, e := cnt, len(m); g != e {
+		return fmt.Errorf("cacheAudit: invalid cache size %d != %d", g, e)
+	}
+
+	return
+}
+
+func (l *lst) audit(n *node, onList bool) (cnt int, err error) {
+	if !onList && (n.prev != nil || n.next != nil) {
+		return -1, fmt.Errorf("lst.audit: free node with non nil linkage")
+	}
+
+	if l.front == nil && l.back != nil || l.back == nil && l.front != nil {
+		return -1, fmt.Errorf("lst.audit: one of .front/.back is nil while the other is non nil")
+	}
+
+	if l.front == l.back && l.front != nil {
+		x := l.front
+		if x.prev != nil || x.next != nil {
+			return -1, fmt.Errorf("lst.audit: single node has non nil linkage")
+		}
+
+		if onList && x != n {
+			return -1, fmt.Errorf("lst.audit: single node is alien")
+		}
+	}
+
+	seen := false
+	var prev *node
+	x := l.front
+	for x != nil {
+		cnt++
+		if x.prev != prev {
+			return -1, fmt.Errorf("lst.audit: broken .prev linkage")
+		}
+
+		if x == n {
+			seen = true
+		}
+
+		prev = x
+		x = x.next
+	}
+
+	if prev != l.back {
+		return -1, fmt.Errorf("lst.audit: broken .back linkage")
+	}
+
+	if onList && !seen {
+		return -1, fmt.Errorf("lst.audit: node missing in list")
+	}
+
+	if !onList && seen {
+		return -1, fmt.Errorf("lst.audit: node should not be on the list")
+	}
+
+	return
 }
