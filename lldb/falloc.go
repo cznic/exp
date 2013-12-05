@@ -785,18 +785,12 @@ var reallocTestHook bool
 // otherwise a database may get irreparably corrupted.
 func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 	if handle <= 0 || handle > maxHandle {
-		return &ErrINVAL{"Allocator.Free: handle out of limits", handle}
+		return &ErrINVAL{"Realloc: handle out of limits", handle}
 	}
 
-	if n, ok := a.m[handle]; ok {
-		a.lru.moveToFront(n)
-		a.cache.put(n)
-		n = a.cache.get(len(b))
-		n.h = handle
-		copy(n.b, b)
-		a.m[handle] = n
-	} else {
-		a.cadd(b, handle)
+	a.cfree(handle)
+	if err = a.realloc(handle, b); err != nil {
+		return
 	}
 
 	if reallocTestHook {
@@ -805,7 +799,8 @@ func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 		}
 	}
 
-	return a.realloc(handle, b)
+	a.cadd(b, handle)
+	return
 }
 
 func (a *Allocator) realloc(handle int64, b []byte) (err error) {
@@ -1892,5 +1887,76 @@ func (l *lst) size() (sz int64) {
 	for n := l.front; n != nil; n = n.next {
 		sz += int64(cap(n.b))
 	}
+	return
+}
+
+func cacheAudit(m map[int64]*node, l *lst) (err error) {
+	cnt := 0
+	for h, n := range m {
+		if g, e := n.h, h; g != e {
+			return fmt.Errorf("cacheAudit: invalid node handle %d != %d", g, e)
+		}
+
+		if cnt, err = l.audit(n, true); err != nil {
+			return
+		}
+	}
+
+	if g, e := cnt, len(m); g != e {
+		return fmt.Errorf("cacheAudit: invalid cache size %d != %d", g, e)
+	}
+
+	return
+}
+
+func (l *lst) audit(n *node, onList bool) (cnt int, err error) {
+	if !onList && (n.prev != nil || n.next != nil) {
+		return -1, fmt.Errorf("lst.audit: free node with non nil linkage")
+	}
+
+	if l.front == nil && l.back != nil || l.back == nil && l.front != nil {
+		return -1, fmt.Errorf("lst.audit: one of .front/.back is nil while the other is non nil")
+	}
+
+	if l.front == l.back && l.front != nil {
+		x := l.front
+		if x.prev != nil || x.next != nil {
+			return -1, fmt.Errorf("lst.audit: single node has non nil linkage")
+		}
+
+		if onList && x != n {
+			return -1, fmt.Errorf("lst.audit: single node is alien")
+		}
+	}
+
+	seen := false
+	var prev *node
+	x := l.front
+	for x != nil {
+		cnt++
+		if x.prev != prev {
+			return -1, fmt.Errorf("lst.audit: broken .prev linkage")
+		}
+
+		if x == n {
+			seen = true
+		}
+
+		prev = x
+		x = x.next
+	}
+
+	if prev != l.back {
+		return -1, fmt.Errorf("lst.audit: broken .back linkage")
+	}
+
+	if onList && !seen {
+		return -1, fmt.Errorf("lst.audit: node missing in list")
+	}
+
+	if !onList && seen {
+		return -1, fmt.Errorf("lst.audit: node should not be on the list")
+	}
+
 	return
 }
