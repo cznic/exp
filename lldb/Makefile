@@ -25,7 +25,10 @@ nuke: clean
 	go clean -i
 
 todo:
-	@grep -nr $(grep) ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alpha:]][[:alnum:]]* * || true
-	@grep -nr $(grep) TODO * || true
 	@grep -nr $(grep) BUG * || true
+	@grep -nr $(grep) LATER * || true
+	@grep -nr $(grep) MAYBE * || true
+	@grep -nr $(grep) TODO * || true
+	@grep -nr $(grep) FIXME * || true
+	@grep -nr $(grep) ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alpha:]][[:alnum:]]* * || true
 	@grep -nr $(grep) println * || true
