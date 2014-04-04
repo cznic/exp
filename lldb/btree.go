@@ -340,6 +340,40 @@ func (t *BTree) seek(key []byte) (enum *bTreeEnumerator, hit bool, err error) {
 	return
 }
 
+// IndexSeek returns an Enumerator with "position" or an error of any. Normally
+// the position is on a KV pair such that key >= KV.key. Then hit is key ==
+// KV.key.  The position is possibly "after" the last KV pair, but that is not
+// an error.  The collate function originally passed to CreateBTree is used for
+// enumerating the tree but a custom collate function c is used for IndexSeek.
+func (t *BTree) IndexSeek(key []byte, c func(a, b []byte) int) (enum *BTreeEnumerator, hit bool, err error) { //TODO +test
+	enum0, hit, err := t.indexSeek(key, c)
+	if err != nil {
+		return
+	}
+
+	enum = &BTreeEnumerator{
+		enum:     enum0,
+		firstHit: hit,
+		key:      append([]byte(nil), key...),
+	}
+	return
+}
+
+func (t *BTree) indexSeek(key []byte, c func(a, b []byte) int) (enum *bTreeEnumerator, hit bool, err error) {
+	if t == nil {
+		err = errors.New("BTree method invoked on nil receiver")
+		return
+	}
+
+	r := &bTreeEnumerator{t: t, collate: t.collate, serial: t.serial}
+	if r.p, r.index, hit, err = t.root.seek(t.store, c, key); err != nil {
+		return
+	}
+
+	enum = r
+	return
+}
+
 // seekFirst returns an enumerator positioned on the first KV pair in the tree,
 // if any.  For an empty tree, err == io.EOF is returend.
 func (t *BTree) SeekFirst() (enum *BTreeEnumerator, err error) {
