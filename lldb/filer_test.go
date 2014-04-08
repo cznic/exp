@@ -79,7 +79,7 @@ var (
 		}
 
 		r, err := NewRollbackFiler(f, checkpoint, f)
-		if r != nil {
+		if err != nil {
 			panic(err)
 		}
 
@@ -153,6 +153,18 @@ func testFilerTruncate(t *testing.T, nf newFunc) {
 			t.Error(err)
 		}
 	}()
+
+	if _, ok := f.(*RollbackFiler); ok {
+		if err := f.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := f.EndUpdate(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 
 	// Check Truncate works.
 	sz := int64(1e6)
@@ -231,6 +243,18 @@ func testFilerReadAtWriteAt(t *testing.T, nf newFunc) {
 			t.Error(err)
 		}
 	}()
+
+	if _, ok := f.(*RollbackFiler); ok {
+		if err := f.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := f.EndUpdate(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 
 	const (
 		N = 1 << 16
@@ -386,6 +410,18 @@ func testInnerFiler(t *testing.T, nf newFunc) {
 			t.Error(err)
 		}
 	}()
+
+	if _, ok := outer.(*RollbackFiler); ok {
+		if err := outer.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := outer.EndUpdate(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 
 	b := []byte{2, 5, 11}
 	n, err := inner.WriteAt(b, -1)
@@ -586,6 +622,18 @@ func testFileReadAtHole(t *testing.T, nf newFunc) {
 			t.Error(err)
 		}
 	}()
+
+	if _, ok := f.(*RollbackFiler); ok {
+		if err := f.BeginUpdate(); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if err := f.EndUpdate(); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
 
 	n, err := f.WriteAt([]byte{1}, 40000)
 	if err != nil {
