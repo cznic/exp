@@ -1257,8 +1257,6 @@ func TestDeleteAny(t *testing.T) {
 }
 
 func benchmarkBTreeSetFiler(b *testing.B, f Filer, sz int) {
-	b.SetBytes(int64(sz))
-
 	if err := f.BeginUpdate(); err != nil {
 		b.Error(err)
 		return
