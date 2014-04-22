@@ -1074,8 +1074,6 @@ func TestRollbackAllocator(t *testing.T) {
 }
 
 func benchmarkAllocatorAlloc(b *testing.B, f Filer, sz int) {
-	b.SetBytes(int64(sz))
-
 	if err := f.BeginUpdate(); err != nil {
 		b.Error(err)
 		return
@@ -1263,8 +1261,6 @@ func BenchmarkAllocatorAllocACIDFiler1e3(b *testing.B) {
 }
 
 func benchmarkAllocatorRndFree(b *testing.B, f Filer, sz int) {
-	b.SetBytes(int64(sz))
-
 	if err := f.BeginUpdate(); err != nil {
 		b.Error(err)
 		return
@@ -1476,8 +1472,6 @@ func BenchmarkAllocatorRndFreeACIDFiler1e3(b *testing.B) {
 }
 
 func benchmarkAllocatorRndGet(b *testing.B, f Filer, sz int) {
-	b.SetBytes(int64(sz))
-
 	if err := f.BeginUpdate(); err != nil {
 		b.Error(err)
 		return

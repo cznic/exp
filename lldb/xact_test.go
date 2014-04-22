@@ -391,7 +391,6 @@ func BenchmarkRollbackFiler(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.SetBytes(1)
 	b.ResetTimer()
 	for _, v := range a {
 		if _, err := r.WriteAt(v.b, v.off); err != nil {
