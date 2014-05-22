@@ -1328,16 +1328,15 @@ func BenchmarkBTreeSetMemFiler1e3(b *testing.B) {
 }
 
 func benchmarkBTreeSetSimpleFileFiler(b *testing.B, sz int) {
-	os.Remove(testDbName)
+	dir, testDbName := temp()
+	defer os.RemoveAll(dir)
+
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		f.Close()
-		os.Remove(testDbName)
-	}()
+	defer f.Close()
 
 	benchmarkBTreeSetFiler(b, NewSimpleFileFiler(f), sz)
 }
@@ -1359,16 +1358,15 @@ func BenchmarkBTreeSetSimpleFileFiler1e3(b *testing.B) {
 }
 
 func benchmarkBTreeSetRollbackFiler(b *testing.B, sz int) {
-	os.Remove(testDbName)
+	dir, testDbName := temp()
+	defer os.RemoveAll(dir)
+
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		f.Close()
-		os.Remove(testDbName)
-	}()
+	defer f.Close()
 
 	g := NewSimpleFileFiler(f)
 	var filer *RollbackFiler
@@ -1407,27 +1405,22 @@ func BenchmarkBTreeSetRollbackFiler1e3(b *testing.B) {
 }
 
 func benchmarkBTreeSetACIDFiler(b *testing.B, sz int) {
-	os.Remove(testDbName)
-	os.Remove(walName)
+	dir, testDbName := temp()
+	defer os.RemoveAll(dir)
+
 	f, err := os.OpenFile(testDbName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		f.Close()
-		os.Remove(testDbName)
-	}()
+	defer f.Close()
 
-	wal, err := os.OpenFile(walName, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	wal, err := os.OpenFile(testDbName+".wal", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	defer func() {
-		wal.Close()
-		os.Remove(walName)
-	}()
+	defer wal.Close()
 
 	filer, err := NewACIDFiler(NewSimpleFileFiler(f), wal)
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+	"io/ioutil"
+	"path/filepath"
 )
 
 const (
@@ -29,4 +31,13 @@ func die() {
 func stack() string {
 	buf := make([]byte, 1<<16)
 	return string(buf[:runtime.Stack(buf, false)])
+}
+
+func temp() (dir, name string) {
+	dir, err := ioutil.TempDir("", "test-lldb-")
+	if err != nil {
+		panic(err)
+	}
+
+	return dir, filepath.Join(dir, "test.tmp")
 }

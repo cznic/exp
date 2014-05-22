@@ -98,7 +98,7 @@ func TestACIDFiler0(t *testing.T) {
 
 	// Phase 1: Create a DB, fill with it with data.
 
-	wal, err := ioutil.TempFile(".", "test-acidfiler0-wal-")
+	wal, err := ioutil.TempFile("", "test-acidfiler0-wal-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestACIDFiler0(t *testing.T) {
 		defer os.Remove(wal.Name())
 	}
 
-	db, err := ioutil.TempFile(".", "test-acidfiler0-db-")
+	db, err := ioutil.TempFile("", "test-acidfiler0-db-")
 	if err != nil {
 		t.Fatal(err)
 	}
