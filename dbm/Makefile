@@ -1,4 +1,7 @@
-.PHONY: all editor todo clean bench
+.PHONY: all clean editor later mem nuke todo
+
+grep=--include=*.go
+testbin=dbm.test
 
 all: editor
 	go build
@@ -6,18 +9,28 @@ all: editor
 	go install
 	make todo
 
+clean:
+	rm -f *~ cov cov.html test.db
+
 editor:
 	go fmt
 	go test -i
 	go test
 
+later:
+	@grep -n $(grep) LATER * || true
+	@grep -n $(grep) MAYBE * || true
+
+mem:
+	go test -c
+	./$(testbin) -test.bench . -test.memprofile mem.out -test.memprofilerate 1
+	go tool pprof --lines --web --alloc_space $(testbin) mem.out
+
+nuke: clean
+	go clean -i
+
 todo:
-	@grep -n ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alnum:]] *.go || true
-	@grep -n TODO *.go || true
-	@grep -n BUG *.go || true
-
-clean:
-	rm -f *~ cov cov.html test.db
-
-bench:
-	go test -run NONE -bench B
+	@grep -nr $(grep) ^[[:space:]]*_[[:space:]]*=[[:space:]][[:alpha:]][[:alnum:]]* * || true
+	@grep -nr $(grep) TODO * || true
+	@grep -nr $(grep) BUG * || true
+	@grep -nr $(grep) println * || true

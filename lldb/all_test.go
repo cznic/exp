@@ -6,11 +6,11 @@ package lldb
 
 import (
 	"encoding/hex"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
-	"io/ioutil"
-	"path/filepath"
 )
 
 const (

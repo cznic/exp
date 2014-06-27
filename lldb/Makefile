@@ -1,5 +1,6 @@
 .PHONY: all editor clean cover nuke
 
+testbin=lldb.test
 grep=--include=*.go
 
 all: editor
@@ -20,6 +21,11 @@ editor:
 	go fmt
 	go test -i
 	go test -timeout 1h
+	
+mem:
+	go test -c
+	./$(testbin) -test.bench . -test.memprofile mem.out -test.memprofilerate 1 -test.timeout 24h
+	go tool pprof --lines --web --alloc_space $(testbin) mem.out
 
 nuke: clean
 	go clean -i
