@@ -1,3 +1,7 @@
+# Copyright 2014 The lldb Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+
 .PHONY: all editor clean cover nuke
 
 testbin=lldb.test
@@ -6,6 +10,7 @@ grep=--include=*.go
 all: editor
 	go build
 	go vet
+	golint .
 	go install
 	make todo
 
