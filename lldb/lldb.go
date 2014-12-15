@@ -15,6 +15,11 @@
 //
 // WARNING: THE LLDB API IS SUBJECT TO CHANGE.
 //
+// Changelog
+//
+// 2014-12-15: Added Options.Compressor. It allows pluggable block compresors
+// to be used.
+//
 // Filers
 //
 // A Filer is an abstraction of storage. A Filer may be a part of some process'

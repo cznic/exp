@@ -23,14 +23,41 @@ const (
 	maxBuf = maxRq + 20 // bufs,Buffers.Alloc
 )
 
+// Compressor defines a zappy[0] compatible compressor method set.
+//
+//   [0]: http://godoc.org/github.com/cznic/zappy#pkg-index
+type Compressor interface {
+	Decode(buf, src []byte) ([]byte, error)
+	DecodedLen(src []byte) (int, error)
+	Encode(buf, src []byte) ([]byte, error)
+	MaxEncodedLen(srcLen int) int
+}
+
+type zappy0 struct{}
+
+func (zappy0) Decode(buf, src []byte) ([]byte, error) { return zappy.Decode(buf, src) }
+func (zappy0) DecodedLen(src []byte) (int, error)     { return zappy.DecodedLen(src) }
+func (zappy0) Encode(buf, src []byte) ([]byte, error) { return zappy.Encode(buf, src) }
+func (zappy0) MaxEncodedLen(srcLen int) int           { return zappy.MaxEncodedLen(srcLen) }
+
 // Options are passed to the NewAllocator to amend some configuration.  The
 // compatibility promise is the same as of struct types in the Go standard
 // library - introducing changes can be made only by adding new exported
 // fields, which is backward compatible as long as client code uses field names
 // to assign values of imported struct types literals.
 //
-// NOTE: No options are currently defined.
-type Options struct{}
+//   [0]: http://godoc.org/github.com/cznic/zappy
+type Options struct {
+	Compressor // If nil then LLDB uses the default zappy[0] compressor.
+}
+
+func (o *Options) clone() *Options {
+	p := *o
+	if p.Compressor == nil {
+		p.Compressor = zappy0{}
+	}
+	return &p
+}
 
 // AllocStats record statistics about a Filer. It can be optionally filled by
 // Allocator.Verify, if successful.
@@ -295,6 +322,7 @@ type Allocator struct {
 	cacheSz  int
 	hit      uint16
 	miss     uint16
+	opts     *Options
 }
 
 // NewAllocator returns a new Allocator. To open an existing file, pass its
@@ -307,6 +335,7 @@ func NewAllocator(f Filer, opts *Options) (a *Allocator, err error) {
 	a = &Allocator{
 		f:       f,
 		cacheSz: 10,
+		opts:    opts.clone(),
 	}
 
 	a.cinit()
@@ -411,7 +440,7 @@ func (a *Allocator) cfree(h int64) {
 // Passing handles not obtained initially from Alloc or not anymore valid to
 // any other Allocator methods can result in an irreparably corrupted database.
 func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
-	buf := bufs.GCache.Get(zappy.MaxEncodedLen(len(b)))
+	buf := bufs.GCache.Get(a.opts.Compressor.MaxEncodedLen(len(b)))
 	defer bufs.GCache.Put(buf)
 	buf, _, cc, err := a.makeUsedBlock(buf, b)
 	if err != nil {
@@ -700,7 +729,7 @@ reloc:
 				copy(b, first[1:])
 				return
 			case tagCompressed:
-				return zappy.Decode(buf, first[1:dlen+1])
+				return a.opts.Compressor.Decode(buf, first[1:dlen+1])
 			}
 		default:
 			cc := bufs.GCache.Get(1)
@@ -730,7 +759,7 @@ reloc:
 					return buf[:0], err
 				}
 
-				return zappy.Decode(buf, zbuf)
+				return a.opts.Compressor.Decode(buf, zbuf)
 			}
 		}
 	case 0:
@@ -763,7 +792,7 @@ reloc:
 				return buf[:0], err
 			}
 
-			return zappy.Decode(buf, zbuf)
+			return a.opts.Compressor.Decode(buf, zbuf)
 		}
 	case tagFreeShort, tagFreeLong:
 		return nil, &ErrILSEQ{Type: ErrExpUsedTag, Off: off, Arg: int64(tag)}
@@ -810,7 +839,7 @@ func (a *Allocator) realloc(handle int64, b []byte) (err error) {
 
 	b8 := bufs.GCache.Get(8)
 	defer bufs.GCache.Put(b8)
-	dst := bufs.GCache.Get(zappy.MaxEncodedLen(len(b)))
+	dst := bufs.GCache.Get(a.opts.Compressor.MaxEncodedLen(len(b)))
 	defer bufs.GCache.Put(dst)
 	b, needAtoms0, cc, err := a.makeUsedBlock(dst, b)
 	if err != nil {
@@ -1116,7 +1145,7 @@ func (a *Allocator) makeUsedBlock(dst []byte, b []byte) (w []byte, rqAtoms int, 
 
 	rqAtoms = n2atoms(n)
 	if a.Compress && n > 14 { // attempt compression
-		if dst, err = zappy.Encode(dst, b); err != nil {
+		if dst, err = a.opts.Compressor.Encode(dst, b); err != nil {
 			return
 		}
 
@@ -1308,7 +1337,7 @@ func (a *Allocator) verifyUsed(h, totalAtoms int64, tag byte, buf, ubuf []byte, 
 	}
 
 	if cc == tagCompressed {
-		if ubuf, err = zappy.Decode(ubuf, buf[:dlen]); err != nil || len(ubuf) > maxRq {
+		if ubuf, err = a.opts.Compressor.Decode(ubuf, buf[:dlen]); err != nil || len(ubuf) > maxRq {
 			err = &ErrILSEQ{Type: ErrDecompress, Off: h2off(h)}
 			log(err)
 			return
