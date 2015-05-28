@@ -651,7 +651,7 @@ func need(n int, src []byte) []byte {
 // otherwise invalid data may be returned without detecting the error.
 //
 // Get is safe for concurrent access by multiple goroutines iff no other
-// goroutine mutates the tree.
+// goroutine mutates the DB.
 func (a *Allocator) Get(buf []byte, handle int64) (b []byte, err error) {
 	buf = buf[:cap(buf)]
 	a.mu.Lock() // X1+
