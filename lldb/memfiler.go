@@ -86,12 +86,17 @@ import (
 )
 
 const (
-	pgBits = 16
-	pgSize = 1 << pgBits
-	pgMask = pgSize - 1
+	maxCacheBytes = 64 * 1024 * 1024 //TODO Add Options item for this.
+	maxCachePages = (maxCacheBytes + pgSize - 1) / pgSize
+	pgBits        = 16
+	pgMask        = pgSize - 1
+	pgSize        = 1 << pgBits
 )
 
-var _ Filer = &MemFiler{} // Ensure MemFiler is a Filer.
+var (
+	_ Filer = (*MemFiler)(nil)
+	_ Filer = (*cache)(nil)
+)
 
 type memFilerMap map[int64]*[pgSize]byte
 
@@ -341,4 +346,84 @@ func (f *MemFiler) WriteTo(w io.Writer) (n int64, err error) {
 		err = rerr
 	}
 	return
+}
+
+type cache struct {
+	Filer
+	m *MemFiler
+}
+
+func newCache(f Filer) Filer {
+	c := &cache{
+		Filer: f,
+		m:     NewMemFiler(),
+	}
+	return c
+}
+
+func (c *cache) shrink() {
+	if len(c.m.m) < maxCachePages {
+		return
+	}
+
+	for k := range c.m.m {
+		delete(c.m.m, k)
+		break
+	}
+}
+
+func (c *cache) ReadAt(b []byte, off int64) (n int, err error) {
+	avail, err := c.Size()
+	if err != nil {
+		return 0, err
+	}
+
+	avail -= off
+	pgI := off >> pgBits
+	pgO := int(off & pgMask)
+	rem := len(b)
+	truncated := false
+	if int64(rem) >= avail {
+		rem = int(avail)
+		truncated = true
+	}
+	for rem != 0 && avail > 0 {
+		pg := c.m.m[pgI]
+		if pg == nil { // cache miss
+			foff := pgI << pgBits
+			rq := mathutil.MinInt64(avail+off-foff, pgSize)
+			pg = new([pgSize]byte)
+			_, err := c.Filer.ReadAt(pg[:rq], foff)
+			if err != nil {
+				c.shrink()
+				return n, err
+			}
+
+			c.m.m[pgI] = pg
+		}
+		nc := copy(b[:mathutil.Min(rem, pgSize)], pg[pgO:])
+		pgI++
+		pgO = 0
+		rem -= nc
+		n += nc
+		avail -= int64(nc)
+		b = b[nc:]
+	}
+	c.shrink()
+	if truncated {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
+
+func (c *cache) Truncate(size int64) error {
+	c.m.Truncate(size)
+	return c.Filer.Truncate(size)
+}
+
+func (c *cache) WriteAt(b []byte, off int64) (n int, err error) {
+	c.shrink()
+	c.m.WriteAt(b, off)
+	return c.Filer.WriteAt(b, off)
 }

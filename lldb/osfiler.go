@@ -35,13 +35,13 @@ type OSFiler struct {
 	size int64 // not set if < 0
 }
 
-// NewOSFiler returns a Filer from an OSFile. This Filer is like the
-// SimpleFileFiler, it does not implement the transaction related methods.
-func NewOSFiler(f OSFile) (r *OSFiler) {
-	return &OSFiler{
+// NewOSFiler returns a new Filer based on f. This Filer is like the
+// SimpleFileFiler, it implements the transaction related methods as no-ops.
+func NewOSFiler(f OSFile) Filer {
+	return newCache(&OSFiler{
 		f:    f,
 		size: -1,
-	}
+	})
 }
 
 // BeginUpdate implements Filer.

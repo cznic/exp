@@ -11,9 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
-	"sync"
 
 	"github.com/cznic/bufs"
 	"github.com/cznic/mathutil"
@@ -288,15 +286,6 @@ type Allocator struct {
 	f        Filer
 	flt      flt
 	Compress bool // enables content compression
-	cache    cache
-	m        map[int64]*node
-	lru      lst
-	expHit   int64
-	expMiss  int64
-	cacheSz  int
-	hit      uint16
-	miss     uint16
-	mu       sync.Mutex
 }
 
 // NewAllocator returns a new Allocator. To open an existing file, pass its
@@ -307,20 +296,16 @@ func NewAllocator(f Filer, opts *Options) (a *Allocator, err error) {
 	}
 
 	a = &Allocator{
-		f:       f,
-		cacheSz: 10,
+		f: f,
 	}
 
-	a.cinit()
 	switch x := f.(type) {
 	case *RollbackFiler:
 		x.afterRollback = func() error {
-			a.cinit()
 			return a.flt.load(a.f, 0)
 		}
 	case *ACIDFiler0:
 		x.RollbackFiler.afterRollback = func() error {
-			a.cinit()
 			return a.flt.load(a.f, 0)
 		}
 	}
@@ -352,51 +337,7 @@ func NewAllocator(f Filer, opts *Options) (a *Allocator, err error) {
 //
 //TODO return a struct perhaps.
 func (a *Allocator) CacheStats() (buffersUsed, buffersTotal int, bytesUsed, bytesTotal, hits, misses int64) {
-	buffersUsed = len(a.m)
-	buffersTotal = buffersUsed + len(a.cache)
-	bytesUsed = a.lru.size()
-	bytesTotal = bytesUsed + a.cache.size()
-	hits = a.expHit
-	misses = a.expMiss
-	return
-}
-
-func (a *Allocator) cinit() {
-	for h, n := range a.m {
-		a.cache.put(a.lru.remove(n))
-		delete(a.m, h)
-	}
-	if a.m == nil {
-		a.m = map[int64]*node{}
-	}
-}
-
-func (a *Allocator) cadd(b []byte, h int64) {
-	if len(a.m) < a.cacheSz {
-		n := a.cache.get(len(b))
-		n.h = h
-		copy(n.b, b)
-		a.m[h] = a.lru.pushFront(n)
-		return
-	}
-
-	// cache full
-	delete(a.m, a.cache.put(a.lru.removeBack()).h)
-	n := a.cache.get(len(b))
-	n.h = h
-	copy(n.b, b)
-	a.m[h] = a.lru.pushFront(n)
-	return
-}
-
-func (a *Allocator) cfree(h int64) {
-	n, ok := a.m[h]
-	if !ok { // must have been evicted
-		return
-	}
-
-	a.cache.put(a.lru.remove(n))
-	delete(a.m, h)
+	return 0, 0, 0, 0, 0, 0
 }
 
 // Alloc allocates storage space for b and returns the handle of the new block
@@ -417,13 +358,10 @@ func (a *Allocator) Alloc(b []byte) (handle int64, err error) {
 	defer bufs.GCache.Put(buf)
 	buf, _, cc, err := a.makeUsedBlock(buf, b)
 	if err != nil {
-		return
+		return -1, err
 	}
 
-	if handle, err = a.alloc(buf, cc); err == nil {
-		a.cadd(b, handle)
-	}
-	return
+	return a.alloc(buf, cc)
 }
 
 func (a *Allocator) alloc(b []byte, cc byte) (h int64, err error) {
@@ -486,7 +424,6 @@ func (a *Allocator) Free(handle int64) (err error) {
 		return &ErrINVAL{"Allocator.Free: handle out of limits", handle}
 	}
 
-	a.cfree(handle)
 	return a.free(handle, 0, true)
 }
 
@@ -654,35 +591,6 @@ func need(n int, src []byte) []byte {
 // goroutine mutates the DB.
 func (a *Allocator) Get(buf []byte, handle int64) (b []byte, err error) {
 	buf = buf[:cap(buf)]
-	a.mu.Lock() // X1+
-	if n, ok := a.m[handle]; ok {
-		a.lru.moveToFront(n)
-		b = need(len(n.b), buf)
-		copy(b, n.b)
-		a.expHit++
-		a.hit++
-		a.mu.Unlock() // X1-
-		return
-	}
-
-	a.expMiss++
-	a.miss++
-	if a.miss > 10 && len(a.m) < 500 {
-		if 100*a.hit/a.miss < 95 {
-			a.cacheSz++
-		}
-		a.hit, a.miss = 0, 0
-	}
-	a.mu.Unlock() // X1-
-
-	defer func(h int64) {
-		if err == nil {
-			a.mu.Lock() // X2+
-			a.cadd(b, h)
-			a.mu.Unlock() // X2-
-		}
-	}(handle)
-
 	first := bufs.GCache.Get(16)
 	defer bufs.GCache.Put(first)
 	relocated := false
@@ -801,18 +709,10 @@ func (a *Allocator) Realloc(handle int64, b []byte) (err error) {
 		return &ErrINVAL{"Realloc: handle out of limits", handle}
 	}
 
-	a.cfree(handle)
 	if err = a.realloc(handle, b); err != nil {
 		return
 	}
 
-	if reallocTestHook {
-		if err = cacheAudit(a.m, &a.lru); err != nil {
-			return
-		}
-	}
-
-	a.cadd(b, handle)
 	return
 }
 
@@ -1797,185 +1697,4 @@ func (f *flt) String() string {
 		a = append(a, fmt.Sprintf("[%2d] %s", i, v))
 	}
 	return strings.Join(a, "")
-}
-
-type node struct {
-	b          []byte
-	h          int64
-	prev, next *node
-}
-
-type cache []*node
-
-func (c *cache) get(n int) *node {
-	r, _ := c.get2(n)
-	return r
-}
-
-func (c *cache) get2(n int) (r *node, isZeroed bool) {
-	s := *c
-	lens := len(s)
-	if lens == 0 {
-		return &node{b: make([]byte, n, mathutil.Min(2*n, maxBuf))}, true
-	}
-
-	i := sort.Search(lens, func(x int) bool { return len(s[x].b) >= n })
-	if i == lens {
-		i--
-		s[i].b, isZeroed = make([]byte, n, mathutil.Min(2*n, maxBuf)), true
-	}
-
-	r = s[i]
-	r.b = r.b[:n]
-	copy(s[i:], s[i+1:])
-	s = s[:lens-1]
-	*c = s
-	return
-}
-
-func (c *cache) cget(n int) (r *node) {
-	r, ok := c.get2(n)
-	if ok {
-		return
-	}
-
-	for i := range r.b {
-		r.b[i] = 0
-	}
-	return
-}
-
-func (c *cache) size() (sz int64) {
-	for _, n := range *c {
-		sz += int64(cap(n.b))
-	}
-	return
-}
-
-func (c *cache) put(n *node) *node {
-	s := *c
-	n.b = n.b[:cap(n.b)]
-	lenb := len(n.b)
-	lens := len(s)
-	i := sort.Search(lens, func(x int) bool { return len(s[x].b) >= lenb })
-	s = append(s, nil)
-	copy(s[i+1:], s[i:])
-	s[i] = n
-	*c = s
-	return n
-}
-
-type lst struct {
-	front, back *node
-}
-
-func (l *lst) pushFront(n *node) *node {
-	if l.front == nil {
-		l.front, l.back, n.prev, n.next = n, n, nil, nil
-		return n
-	}
-
-	n.prev, n.next, l.front.prev, l.front = nil, l.front, n, n
-	return n
-}
-
-func (l *lst) remove(n *node) *node {
-	if n.prev == nil {
-		l.front = n.next
-	} else {
-		n.prev.next = n.next
-	}
-	if n.next == nil {
-		l.back = n.prev
-	} else {
-		n.next.prev = n.prev
-	}
-	n.prev, n.next = nil, nil
-	return n
-}
-
-func (l *lst) removeBack() *node {
-	return l.remove(l.back)
-}
-
-func (l *lst) moveToFront(n *node) *node {
-	return l.pushFront(l.remove(n))
-}
-
-func (l *lst) size() (sz int64) {
-	for n := l.front; n != nil; n = n.next {
-		sz += int64(cap(n.b))
-	}
-	return
-}
-
-func cacheAudit(m map[int64]*node, l *lst) (err error) {
-	cnt := 0
-	for h, n := range m {
-		if g, e := n.h, h; g != e {
-			return fmt.Errorf("cacheAudit: invalid node handle %d != %d", g, e)
-		}
-
-		if cnt, err = l.audit(n, true); err != nil {
-			return
-		}
-	}
-
-	if g, e := cnt, len(m); g != e {
-		return fmt.Errorf("cacheAudit: invalid cache size %d != %d", g, e)
-	}
-
-	return
-}
-
-func (l *lst) audit(n *node, onList bool) (cnt int, err error) {
-	if !onList && (n.prev != nil || n.next != nil) {
-		return -1, fmt.Errorf("lst.audit: free node with non nil linkage")
-	}
-
-	if l.front == nil && l.back != nil || l.back == nil && l.front != nil {
-		return -1, fmt.Errorf("lst.audit: one of .front/.back is nil while the other is non nil")
-	}
-
-	if l.front == l.back && l.front != nil {
-		x := l.front
-		if x.prev != nil || x.next != nil {
-			return -1, fmt.Errorf("lst.audit: single node has non nil linkage")
-		}
-
-		if onList && x != n {
-			return -1, fmt.Errorf("lst.audit: single node is alien")
-		}
-	}
-
-	seen := false
-	var prev *node
-	x := l.front
-	for x != nil {
-		cnt++
-		if x.prev != prev {
-			return -1, fmt.Errorf("lst.audit: broken .prev linkage")
-		}
-
-		if x == n {
-			seen = true
-		}
-
-		prev = x
-		x = x.next
-	}
-
-	if prev != l.back {
-		return -1, fmt.Errorf("lst.audit: broken .back linkage")
-	}
-
-	if onList && !seen {
-		return -1, fmt.Errorf("lst.audit: node missing in list")
-	}
-
-	if !onList && seen {
-		return -1, fmt.Errorf("lst.audit: node should not be on the list")
-	}
-
-	return
 }
