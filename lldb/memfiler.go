@@ -171,7 +171,6 @@ var zeroPage [pgSize]byte
 
 // ReadAt implements Filer.
 func (f *MemFiler) ReadAt(b []byte, off int64) (n int, err error) {
-	println("++++ ReadAt")
 	avail := f.size - off
 	pgI := off >> pgBits
 	pgO := int(off & pgMask)
@@ -264,7 +263,6 @@ func (f *MemFiler) Truncate(size int64) (err error) {
 
 // WriteAt implements Filer.
 func (f *MemFiler) WriteAt(b []byte, off int64) (n int, err error) {
-	println("++++ WriterAt")
 	pgI := off >> pgBits
 	pgO := int(off & pgMask)
 	n = len(b)
