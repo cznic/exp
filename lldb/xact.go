@@ -424,6 +424,7 @@ func NewRollbackFiler(f Filer, checkpoint func(sz int64) error, writerAt io.Writ
 
 // Implements Filer.
 func (r *RollbackFiler) BeginUpdate() (err error) {
+	println("rrrr BeginUpdate")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -471,6 +472,7 @@ func (r *RollbackFiler) Close() (err error) {
 
 // Implements Filer.
 func (r *RollbackFiler) EndUpdate() (err error) {
+	println("rrrr EndUpdate")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -555,6 +557,7 @@ func (r *RollbackFiler) ReadAt(b []byte, off int64) (n int, err error) {
 
 // Implements Filer.
 func (r *RollbackFiler) Rollback() (err error) {
+	println("rrrr Rollback")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -618,6 +621,7 @@ func (r *RollbackFiler) Truncate(size int64) error {
 
 // Implements Filer.
 func (r *RollbackFiler) WriteAt(b []byte, off int64) (n int, err error) {
+	println("rrrr WriteAt")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

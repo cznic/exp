@@ -32,9 +32,9 @@ type SimpleFileFiler struct {
 	size int64 // not set if < 0
 }
 
-// NewSimpleFileFiler returns a new Filer based on SimpleFileFiler.
-func NewSimpleFileFiler(f *os.File) Filer {
-	return newCache(&SimpleFileFiler{file: f, size: -1})
+// NewSimpleFileFiler returns a new SimpleFileFiler.
+func NewSimpleFileFiler(f *os.File) *SimpleFileFiler {
+	return &SimpleFileFiler{file: f, size: -1}
 }
 
 // BeginUpdate implements Filer.

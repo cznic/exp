@@ -4,6 +4,76 @@
 
 // A memory-only implementation of Filer.
 
+/*
+
+pgBits: 8
+BenchmarkMemFilerWrSeq	  100000	     19430 ns/op	1646.93 MB/s
+BenchmarkMemFilerRdSeq	  100000	     17390 ns/op	1840.13 MB/s
+BenchmarkMemFilerWrRand	 1000000	      1903 ns/op	 133.94 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1153 ns/op	 221.16 MB/s
+
+pgBits: 9
+BenchmarkMemFilerWrSeq	  100000	     16195 ns/op	1975.80 MB/s
+BenchmarkMemFilerRdSeq	  200000	     13011 ns/op	2459.39 MB/s
+BenchmarkMemFilerWrRand	 1000000	      2248 ns/op	 227.28 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1177 ns/op	 433.94 MB/s
+
+pgBits: 10
+BenchmarkMemFilerWrSeq	  100000	     16169 ns/op	1979.04 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12673 ns/op	2524.91 MB/s
+BenchmarkMemFilerWrRand	 1000000	      5550 ns/op	 184.30 MB/s
+BenchmarkMemFilerRdRand	 1000000	      1699 ns/op	 601.79 MB/s
+
+pgBits: 11
+BenchmarkMemFilerWrSeq	  100000	     13449 ns/op	2379.31 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12058 ns/op	2653.80 MB/s
+BenchmarkMemFilerWrRand	  500000	      4335 ns/op	 471.47 MB/s
+BenchmarkMemFilerRdRand	 1000000	      2843 ns/op	 719.47 MB/s
+
+pgBits: 12
+BenchmarkMemFilerWrSeq	  200000	     11976 ns/op	2672.00 MB/s
+BenchmarkMemFilerRdSeq	  200000	     12255 ns/op	2611.06 MB/s
+BenchmarkMemFilerWrRand	  200000	      8058 ns/op	 507.14 MB/s
+BenchmarkMemFilerRdRand	  500000	      4365 ns/op	 936.15 MB/s
+
+pgBits: 13
+BenchmarkMemFilerWrSeq	  200000	     10852 ns/op	2948.69 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11561 ns/op	2767.77 MB/s
+BenchmarkMemFilerWrRand	  200000	      9748 ns/op	 840.15 MB/s
+BenchmarkMemFilerRdRand	  500000	      7236 ns/op	1131.59 MB/s
+
+pgBits: 14
+BenchmarkMemFilerWrSeq	  200000	     10328 ns/op	3098.12 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11292 ns/op	2833.66 MB/s
+BenchmarkMemFilerWrRand	  100000	     16768 ns/op	 978.75 MB/s
+BenchmarkMemFilerRdRand	  200000	     13033 ns/op	1258.43 MB/s
+
+pgBits: 15
+BenchmarkMemFilerWrSeq	  200000	     10309 ns/op	3103.93 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11126 ns/op	2876.12 MB/s
+BenchmarkMemFilerWrRand	   50000	     31985 ns/op	1021.74 MB/s
+BenchmarkMemFilerRdRand	  100000	     25217 ns/op	1297.65 MB/s
+
+pgBits: 16
+BenchmarkMemFilerWrSeq	  200000	     10324 ns/op	3099.45 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11201 ns/op	2856.80 MB/s
+BenchmarkMemFilerWrRand	   20000	     55226 ns/op	1184.76 MB/s
+BenchmarkMemFilerRdRand	   50000	     48316 ns/op	1355.16 MB/s
+
+pgBits: 17
+BenchmarkMemFilerWrSeq	  200000	     10377 ns/op	3083.53 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11018 ns/op	2904.18 MB/s
+BenchmarkMemFilerWrRand	   10000	    143425 ns/op	 913.12 MB/s
+BenchmarkMemFilerRdRand	   20000	     95267 ns/op	1376.99 MB/s
+
+pgBits: 18
+BenchmarkMemFilerWrSeq	  200000	     10312 ns/op	3102.96 MB/s
+BenchmarkMemFilerRdSeq	  200000	     11069 ns/op	2890.84 MB/s
+BenchmarkMemFilerWrRand	    5000	    280910 ns/op	 934.14 MB/s
+BenchmarkMemFilerRdRand	   10000	    188500 ns/op	1388.17 MB/s
+
+*/
+
 package lldb
 
 import (
@@ -16,17 +86,12 @@ import (
 )
 
 const (
-	maxCacheBytes = 64 * 1024 * 1024 //TODO Add Options item for this.
-	maxCachePages = (maxCacheBytes + pgSize - 1) / pgSize
-	pgBits        = 16
-	pgMask        = pgSize - 1
-	pgSize        = 1 << pgBits
+	pgBits = 16
+	pgSize = 1 << pgBits
+	pgMask = pgSize - 1
 )
 
-var (
-	_ Filer = (*MemFiler)(nil)
-	_ Filer = (*cache)(nil)
-)
+var _ Filer = &MemFiler{} // Ensure MemFiler is a Filer.
 
 type memFilerMap map[int64]*[pgSize]byte
 
@@ -106,6 +171,7 @@ var zeroPage [pgSize]byte
 
 // ReadAt implements Filer.
 func (f *MemFiler) ReadAt(b []byte, off int64) (n int, err error) {
+	println("++++ ReadAt")
 	avail := f.size - off
 	pgI := off >> pgBits
 	pgO := int(off & pgMask)
@@ -198,6 +264,7 @@ func (f *MemFiler) Truncate(size int64) (err error) {
 
 // WriteAt implements Filer.
 func (f *MemFiler) WriteAt(b []byte, off int64) (n int, err error) {
+	println("++++ WriterAt")
 	pgI := off >> pgBits
 	pgO := int(off & pgMask)
 	n = len(b)
@@ -276,119 +343,4 @@ func (f *MemFiler) WriteTo(w io.Writer) (n int64, err error) {
 		err = rerr
 	}
 	return
-}
-
-type cache struct {
-	Filer
-	m *MemFiler
-}
-
-func newCache(f Filer) Filer {
-	c := &cache{
-		Filer: f,
-		m:     NewMemFiler(),
-	}
-	return c
-}
-
-func (c *cache) ReadAt(b []byte, off int64) (n int, err error) {
-	avail, err := c.Size()
-	if err != nil {
-		return 0, err
-	}
-
-	avail -= off
-	pgI := off >> pgBits
-	pgO := int(off & pgMask)
-	rem := len(b)
-	truncated := false
-	if int64(rem) >= avail {
-		rem = int(avail)
-		truncated = true
-	}
-	for rem != 0 && avail > 0 {
-		pg, err := c.load(pgI, -1)
-		if err != nil {
-			return n, err
-		}
-
-		nc := copy(b[:mathutil.Min(rem, pgSize)], pg[pgO:])
-		pgI++
-		pgO = 0
-		rem -= nc
-		n += nc
-		b = b[nc:]
-	}
-	if truncated {
-		return n, io.EOF
-	}
-
-	return n, nil
-}
-
-func (c *cache) load(pgI int64, wr int) (*[pgSize]byte, error) {
-	if pg := c.m.m[pgI]; pg != nil {
-		return pg, nil
-	}
-
-	if len(c.m.m) >= maxCachePages {
-		for k := range c.m.m {
-			delete(c.m.m, k)
-			break
-		}
-	}
-	if wr >= pgSize {
-		pg := &[pgSize]byte{}
-		c.m.m[pgI] = pg
-		return pg, nil
-	}
-
-	sz, err := c.Filer.Size()
-	if err != nil {
-		return nil, err
-	}
-
-	off := pgI << pgBits
-	avail := sz - off
-	if avail <= 0 {
-		return nil, io.EOF
-	}
-
-	rq := int(mathutil.MinInt64(avail, pgSize))
-	pg := &[pgSize]byte{}
-	if _, err = c.Filer.ReadAt(pg[:rq], off); err != nil {
-		return nil, err
-	}
-	c.m.m[pgI] = pg
-	return pg, nil
-}
-
-func (c *cache) Truncate(size int64) error {
-	c.m.Truncate(size)
-	return c.Filer.Truncate(size)
-}
-
-func (c *cache) WriteAt(b []byte, off int64) (n int, err error) {
-	if n, err := c.Filer.WriteAt(b, off); err != nil {
-		return n, err
-	}
-
-	pgI := off >> pgBits
-	pgO := int(off & pgMask)
-	n = len(b)
-	rem := n
-	var nc int
-	for rem != 0 {
-		pg, err := c.load(pgI, rem)
-		if err != nil {
-			return n, err
-		}
-		nc = copy((*pg)[pgO:], b)
-		pgI++
-		pgO = 0
-		rem -= nc
-		b = b[nc:]
-	}
-	c.m.size = mathutil.MaxInt64(c.m.size, off+int64(n))
-	return n, nil
 }

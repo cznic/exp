@@ -141,6 +141,10 @@ func (a *pAllocator) Realloc(handle int64, b []byte) (err error) {
 		return
 	}
 
+	if err = cacheAudit(a.Allocator.m, &a.Allocator.lru); err != nil {
+		return
+	}
+
 	if err = a.Allocator.Verify(NewMemFiler(), a.logger, &a.stats); err != nil {
 		err = fmt.Errorf("'%s': %v", err, a.err())
 		return
@@ -918,6 +922,10 @@ func TestAllocatorRnd(t *testing.T) {
 						"D) h:%#x, len(b):%#4x, len(wb): %#x, err %v",
 						h, len0, len(wb), err,
 					)
+				}
+
+				if err = cacheAudit(a.m, &a.lru); err != nil {
+					t.Fatal(err)
 				}
 
 				ref[h] = wb
