@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/cznic/bufs"
 	"github.com/cznic/mathutil"
@@ -283,9 +284,10 @@ Note: No Allocator method returns io.EOF.
 
 */
 type Allocator struct {
+	Compress bool // enables content compression
 	f        Filer
 	flt      flt
-	Compress bool // enables content compression
+	mu       sync.Mutex //
 }
 
 // NewAllocator returns a new Allocator. To open an existing file, pass its
@@ -590,6 +592,9 @@ func need(n int, src []byte) []byte {
 // Get is safe for concurrent access by multiple goroutines iff no other
 // goroutine mutates the DB.
 func (a *Allocator) Get(buf []byte, handle int64) (b []byte, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	buf = buf[:cap(buf)]
 	first := bufs.GCache.Get(16)
 	defer bufs.GCache.Put(first)
