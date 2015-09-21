@@ -625,6 +625,18 @@ func (e *BTreeEnumerator) Next() (key, value []byte, err error) {
 
 	canRetry := true
 retry:
+	if e.enum.p == nil {
+		e.err = io.EOF
+		return nil, nil, e.err
+	}
+
+	if e.enum.index == e.enum.p.len() && e.enum.serial == e.enum.t.serial {
+		if err := e.enum.next(); err != nil {
+			e.err = err
+			return nil, nil, e.err
+		}
+	}
+
 	if key, value, err = e.enum.current(); err != nil {
 		if _, ok := err.(*ErrINVAL); !ok || !canRetry {
 			e.err = err

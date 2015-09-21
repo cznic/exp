@@ -23,7 +23,7 @@ cover:
 	t=$(shell tempfile) ; go test -coverprofile $$t && go tool cover -html $$t && unlink $$t
 
 editor:
-	go fmt
+	gofmt -l -s -w *.go
 	go test -i
 	go test -timeout 1h
 	
