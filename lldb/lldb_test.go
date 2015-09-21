@@ -7,20 +7,9 @@ package lldb
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
-	"path"
-	"runtime"
 	"strings"
 	"testing"
 )
-
-var dbg = func(s string, va ...interface{}) {
-	_, fn, fl, _ := runtime.Caller(1)
-	fmt.Printf("%s:%d: ", path.Base(fn), fl)
-	fmt.Printf(s+"\n", va...)
-}
-
-func use(...interface{}) {}
 
 func TestN2Atoms(t *testing.T) {
 	tab := []struct{ n, a int }{

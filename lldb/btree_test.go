@@ -6,14 +6,19 @@ package lldb
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
 	"runtime"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cznic/fileutil"
@@ -1884,4 +1889,61 @@ func TestBug216(t *testing.T) {
 			//dbg("%v", i+1)
 		}
 	}
+}
+
+func testKVBug27(t *testing.T, keys []string) {
+	v := []byte("doesn't matter")
+	tr := NewBTree(bytes.Compare)
+
+	exp := 0
+	for _, k := range keys {
+		k := []byte(k)
+		if k[0] >= 0x10 {
+			exp++
+		}
+		if err := tr.Set(k, v); err != nil {
+			t.Fatal(len(keys), err)
+		}
+	}
+
+	k := [20]byte{0x10}
+	e, _, err := tr.Seek(k[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := 0
+	for {
+		if _, _, err = e.Next(); err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			t.Fatal(err)
+		}
+		got++
+	}
+	if got != exp {
+		t.Errorf("keys %v, got %v, exp %v: FAIL", len(keys), got, exp)
+		return
+	}
+
+	t.Logf("keys %v, got %v, exp %v", len(keys), got, exp)
+}
+
+func TestKVBug27(t *testing.T) { // https://github.com/cznic/kv/issues/27
+	f, err := ioutil.ReadFile("testdata/fortunes.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keys := strings.Split(string(f), "\n")
+	for i, v := range keys {
+		h := sha1.Sum([]byte(v))
+		keys[i] = string(h[:])
+	}
+	sort.Strings(keys)
+	testKVBug27(t, keys[:795])
+	testKVBug27(t, keys[:796])
+	testKVBug27(t, keys[:797])
 }
