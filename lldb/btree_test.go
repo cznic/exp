@@ -1947,3 +1947,31 @@ func TestKVBug27(t *testing.T) { // https://github.com/cznic/kv/issues/27
 	testKVBug27(t, keys[:796])
 	testKVBug27(t, keys[:797])
 }
+
+func TestGetEmpty(t *testing.T) {
+	tr := NewBTree(nil)
+	empty := []byte("empty")
+	missing := []byte("missing")
+	err := tr.Set(empty, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, buf := range [][]byte{nil, []byte{}} {
+		data, err := tr.Get(buf, missing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data != nil {
+			t.Fatalf("missing key returned non-nil data")
+		}
+	}
+	for _, buf := range [][]byte{nil, []byte{}} {
+		data, err := tr.Get(buf, empty)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data == nil || len(data) != 0 {
+			t.Fatalf("empty key returned nil or non-empty data")
+		}
+	}
+}

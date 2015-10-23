@@ -251,7 +251,12 @@ func (t *BTree) Get(buf, key []byte) (value []byte, err error) {
 		return
 	}
 
-	value = need(len(buffer), buf)
+	if len(buffer) != 0 {
+		// The buffer cache returns nil for empty buffers, bypass it
+		value = need(len(buffer), buf)
+	} else {
+		value = []byte{}
+	}
 	copy(value, buffer)
 	return
 }
@@ -1360,7 +1365,13 @@ func (p btreeDataPage) valueField(index int) (b []byte, h int64) {
 }
 
 func (p btreeDataPage) value(a btreeStore, index int) (b []byte, err error) {
-	return p.content(a, 15+kKV+2*kKV*index)
+	value, err := p.content(a, 15+kKV+2*kKV*index)
+	if err == nil && value == nil {
+		// We have a valid page, no fetch error, the key is valid so return
+		// non-nil data
+		return []byte{}, nil
+	}
+	return value, err
 }
 
 func (p btreeDataPage) valueCopy(a btreeStore, index int) (b []byte, err error) {
