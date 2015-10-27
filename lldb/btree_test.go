@@ -1956,7 +1956,7 @@ func TestGetEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, buf := range [][]byte{nil, []byte{}} {
+	for _, buf := range [][]byte{nil, {}} {
 		data, err := tr.Get(buf, missing)
 		if err != nil {
 			t.Fatal(err)
@@ -1965,7 +1965,7 @@ func TestGetEmpty(t *testing.T) {
 			t.Fatalf("missing key returned non-nil data")
 		}
 	}
-	for _, buf := range [][]byte{nil, []byte{}} {
+	for _, buf := range [][]byte{nil, {}} {
 		data, err := tr.Get(buf, empty)
 		if err != nil {
 			t.Fatal(err)

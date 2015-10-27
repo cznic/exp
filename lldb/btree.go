@@ -1514,7 +1514,7 @@ func (p btreeDataPage) overflow(a btreeStore, root, ph, parent int64, parentInde
 			return nil, err
 		}
 
-		if left.len() < 2*kData {
+		if left.len() < 2*kData && index > 0 {
 
 			p, left = p.moveLeft(left, 1)
 			if err = a.Realloc(leftH, left); err != nil {
