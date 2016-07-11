@@ -7,6 +7,12 @@
 // intersection of models listed in [1]. As a settled term is lacking, it'll be
 // called here a 'Virtual memory model' (VMM).
 //
+// Deprecated
+//
+// 2016-07-11: This package is now officially deprecated. It will be kept here
+// because there are few brave people using it, but there will be no future
+// updates to this package.  Please switch to github.com/cznic/lldb.
+//
 // Experimental release notes
 //
 // This is an experimental release. Don't open a DB from two applications or
