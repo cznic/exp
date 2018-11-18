@@ -1,10 +1,5 @@
-exp
-===
+`github.com/cznic/exp` has moved to [`modernc.org/exp`](https://godoc.org/modernc.org/exp) ([vcs](https://gitlab.com/cznic/exp)).
 
-This repository holds experimental packages.
+Please update your import paths to `modernc.org/exp`.
 
-Warning: Packages here are experimental and unreliable. Some may one day be
-promoted to their own repository or they may be modified arbitrarily or even
-disappear altogether.
-
-In short, code in this repository is not subject to any compatibility promise.
+This repo is now archived.
